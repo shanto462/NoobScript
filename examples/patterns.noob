@@ -1,0 +1,26 @@
+btw a tiny calculator: expressions are nested lists, itdepends takes them apart
+cook calc(expr) {
+    itdepends expr {
+        on ["+", a, b] { itsgiving calc(a) + calc(b) }
+        on ["*", a, b] { itsgiving calc(a) * calc(b) }
+        on ["-", a] { itsgiving -calc(a) }
+        on ["/", _, 0] { yeet "dividing by zero? in this economy?" }
+        on ["/", a, b] { itsgiving calc(a) / calc(b) }
+        on [op, ...args] { yeet "no idea what ${op} is (${clout(args)} args)" }
+        nah {
+            ongod vibeof(expr) == "number", "that's not a number: ${expr}"
+            itsgiving expr
+        }
+    }
+}
+
+yap calc(["+", 2, ["*", 3, 4]])
+yap calc(["-", ["/", 9, 2]])
+
+speedrun bad in [["/", 1, 0], ["^", 2, 3], "oops"] {
+    tryna {
+        calc(bad)
+    } caught4k err {
+        yap "nah:", err
+    }
+}

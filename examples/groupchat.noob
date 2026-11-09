@@ -1,0 +1,29 @@
+btw a worker pool: a bounded channel feeding several tasks
+lowkey jobs = groupchat(2)
+lowkey results = groupchat()
+
+cook worker(id) {
+    speedrun job in jobs {
+        nap(5)
+        dm(results, [id, job * job])
+    }
+}
+
+cook producer() {
+    speedrun n in 1..6 {
+        dm(jobs, n)
+    }
+    leavechat(jobs)
+}
+
+lowkey crew = [sendit worker(id) speedrun id in 1..3]
+sendit producer()
+
+holdup crew
+leavechat(results)
+
+lowkey squares = []
+speedrun [id, square] in results {
+    slide(squares, square)
+}
+yap rank(squares)

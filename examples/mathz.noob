@@ -1,0 +1,10 @@
+btw a small library, imported with: rizzup "mathz.noob"
+highkey PI = 3.14
+
+cook square(x) {
+    itsgiving x * x
+}
+
+cook clamp(x, low = 0, high = 100) {
+    itsgiving x < low ? low : x > high ? high : x
+}

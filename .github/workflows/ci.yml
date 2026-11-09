@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Build and test
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install dependencies
+        run: brew install llvm ninja
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja
+          -DLLVM_DIR="$(brew --prefix llvm)/lib/cmake/llvm"
+          -DCMAKE_CXX_FLAGS=-Werror
+      - name: Build
+        run: cmake --build build
+      - name: Language and CLI tests
+        run: ctest --test-dir build --output-on-failure
+      - name: Runtime tests
+        run: cmake --build build --target runtime_test && build/runtime_test
+      - name: Syntax check the examples
+        run: for f in examples/*.noob; do build/noob --check "$f"; done
+      - name: Install and run
+        run: |
+          cmake --install build --prefix "$RUNNER_TEMP/noob"
+          "$RUNNER_TEMP/noob/bin/noob" -c 'yap "installed ok"'
+
+  sanitizers:
+    name: AddressSanitizer and UBSan
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install dependencies
+        run: brew install llvm ninja
+      - name: Configure
+        run: >
+          cmake -S . -B build-asan -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DLLVM_DIR="$(brew --prefix llvm)/lib/cmake/llvm"
+          -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer"
+      - name: Build
+        run: cmake --build build-asan --target noob runtime_test
+      - name: Runtime tests
+        run: build-asan/runtime_test
+      - name: Language tests
+        env:
+          # Sanitized stack frames are much larger than normal ones.
+          NOOB_MIN_STACK: "67108864"
+        run: python3 test/run_tests.py build-asan/noob test/cases
+      - name: CLI tests
+        run: python3 test/test_cli.py build-asan/noob

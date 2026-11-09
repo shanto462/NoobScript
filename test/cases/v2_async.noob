@@ -147,7 +147,7 @@ holdup ninner
 show()                                   btw OUT: ["inner"]
 
 btw ---- firstone
-lowkey f1 = sendit after(60, "slow")
+lowkey f1 = sendit after(600, "slow")
 lowkey f2 = sendit after(20, "quick")
 yap firstone([f1, f2])                   btw OUT: quick
 yap trail                                btw OUT: ["quick"]
