@@ -1,5 +1,5 @@
 btw EXIT: 2
-btw ERR: syntax_errors.noob:16:8: error: bestie what is this 💀
+btw ERR: syntax_errors.noob:15:8: error: bestie what is this 💀
 btw ERR: expected an expression after '+'
 btw ERR: expected a variable name, found '='
 btw ERR: ghosting what? there's no loop here
@@ -10,7 +10,6 @@ btw ERR: this ain't C, drop the semicolon
 btw ERR: this string is missing its closing quote
 btw ERR: you can only assign to a variable or an item like a[0]
 btw ERR: parameter 'a' is listed twice
-btw ERR: 'squad' is reserved for a future version
 btw ERR: '\q' isn't a valid escape
 yap "this must not run, nothing runs on a syntax error"
 yap 1 +

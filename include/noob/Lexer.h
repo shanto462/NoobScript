@@ -21,6 +21,9 @@ public:
   /// there is none before `end`.
   static const char *findInterpEnd(const char *p, const char *end);
 
+  /// True if `word` could be declared as a variable name.
+  static bool isValidName(llvm::StringRef word);
+
 private:
   void lexIdentifier(std::vector<Token> &out);
   void lexNumber(std::vector<Token> &out);

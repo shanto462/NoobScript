@@ -39,8 +39,15 @@ static Tok keywordOrIdent(StringRef word) {
       .Case("npc", Tok::KwNpc)
       .Case("sus", Tok::KwSus)
       .Case("ratio", Tok::KwRatio)
-      .Case("rizzup", Tok::KwReserved)
-      .Case("squad", Tok::KwReserved)
+      .Case("squad", Tok::KwSquad)
+      .Case("me", Tok::KwMe)
+      .Case("og", Tok::KwOg)
+      .Case("rizzup", Tok::KwRizzup)
+      .Case("sendit", Tok::KwSendit)
+      .Case("holdup", Tok::KwHoldup)
+      .Case("serve", Tok::KwServe)
+      .Case("itdepends", Tok::KwItdepends)
+      .Case("regardless", Tok::KwRegardless)
       .Default(Tok::Ident);
 }
 
@@ -99,6 +106,15 @@ static const char *skipInterp(const char *p, const char *end, int nesting) {
 
 const char *Lexer::findInterpEnd(const char *p, const char *end) {
   return skipInterp(p, end, 0);
+}
+
+bool Lexer::isValidName(StringRef word) {
+  if (word.empty() || isDigit(word.front()) || word == "btw")
+    return false;
+  for (char c : word)
+    if (!isAlnum(c) && c != '_')
+      return false;
+  return keywordOrIdent(word) == Tok::Ident;
 }
 
 Lexer::Lexer(StringRef source, Diag &diag, bool allowShebang)
@@ -216,7 +232,14 @@ void Lexer::lexPunctuation(std::vector<Token> &out) {
   case '/': return emit(next('=') ? Tok::SlashEq : Tok::Slash);
   case '<': return emit(next('=') ? Tok::LtEq : Tok::Lt);
   case '>': return emit(next('=') ? Tok::GtEq : Tok::Gt);
-  case '=': return emit(next('=') ? Tok::EqEq : Tok::Eq);
+  case '=':
+    if (next('>'))
+      return emit(Tok::Arrow);
+    return emit(next('=') ? Tok::EqEq : Tok::Eq);
+  case '?':
+    if (next('.'))
+      return emit(Tok::QuestionDot);
+    return emit(next('?') ? Tok::QuestionQuestion : Tok::Question);
   case '!': return emit(next('=') ? Tok::BangEq : Tok::Bang);
   case '*':
     if (next('*'))
@@ -224,8 +247,8 @@ void Lexer::lexPunctuation(std::vector<Token> &out) {
     return emit(next('=') ? Tok::StarEq : Tok::Star);
   case '.':
     if (next('.'))
-      return emit(Tok::DotDot);
-    break;
+      return emit(next('.') ? Tok::DotDotDot : Tok::DotDot);
+    return emit(Tok::Dot);
   case '&':
     if (next('&'))
       return emit(Tok::AndAnd);
@@ -233,7 +256,7 @@ void Lexer::lexPunctuation(std::vector<Token> &out) {
   case '|':
     if (next('|'))
       return emit(Tok::OrOr);
-    break;
+    return emit(next('>') ? Tok::PipeArrow : Tok::Bar);
   case ';':
     diag_.syntax(locOf(start_), "this ain't C, drop the semicolon",
                  "statements end at the end of the line, no ';' needed");

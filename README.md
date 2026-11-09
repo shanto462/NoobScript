@@ -19,6 +19,8 @@ tryna {
 }
 ```
 
+Also has squads (classes), modules, `sendit`/`holdup` async with group chats (channels), generators, pattern matching, destructuring, arrow functions, and more.
+
 ## Build
 
 ```sh
@@ -30,13 +32,22 @@ ctest --test-dir build --output-on-failure
 
 ## Run
 
+Works like `python`:
+
 ```sh
-build/noob examples/tour.noob          # run a script
-build/noob --check script.noob         # syntax check only
-build/noob --trace script.noob         # show each statement as it runs
-build/noob --sober script.noob         # plain error messages
-build/noob                             # REPL
+noob script.noob a b          # run a file, with a and b in the list cliargs
+noob -c 'yap 1 + 1'           # run a string
+echo 'yap "hi"' | noob        # run a piped script (or: noob -)
+noob                          # open the REPL
+noob -i script.noob           # run a file, then a REPL with its variables
+noob --check script.noob      # syntax check only
+noob --trace script.noob      # show each statement as it runs
+noob --sober script.noob      # plain error messages
 ```
+
+`cmake --install build --prefix ~/.local` puts `noob` on your PATH, or run `build/noob` directly.
+
+Each task, generator, and worker thread gets a 2 MiB stack and there's one worker per logical CPU, matching Rust and Tokio. Change them with `--stack-size=BYTES` and `--worker-threads=N`, or `NOOB_MIN_STACK` and `NOOB_WORKER_THREADS`.
 
 Exit codes: `0` success, `N` from `touchgrass N`, `1` uncaught error, `2` syntax error, `64` bad usage.
 

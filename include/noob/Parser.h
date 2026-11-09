@@ -5,6 +5,7 @@
 #include "noob/Token.h"
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/StringRef.h"
 
 #include <vector>
@@ -39,8 +40,20 @@ private:
   const Stmt *parseExit();
   const Stmt *parseLoopControl();
   const Stmt *parseExprOrAssign();
+  const Stmt *parseServe();
+  const Stmt *parseMatch();
+  const Stmt *parseSquad();
+  const Stmt *parseRizzup();
+  bool parseLoopHeader(LoopHeader &out);
+  const Pattern *parsePattern();
+  const Pattern *parsePatternPrimary();
+  const Pattern *parseListPattern();
+  const Pattern *parseMapPattern();
   bool parseBlock(Block &out);
   const FunctionDecl *parseFunctionRest(Symbol name);
+  bool parseParams(llvm::SmallVectorImpl<Param> &out);
+  const FunctionDecl *buildFunction(Symbol name, llvm::ArrayRef<Param> params,
+                                    llvm::function_ref<bool(Block &)> parseBody);
 
   // Expressions.
   const Expr *parseExpr();
@@ -54,12 +67,19 @@ private:
   const Expr *parseList();
   const Expr *parseMap();
   const Expr *parseLambda();
+  const Expr *parseArrow();
+  bool arrowAhead() const;
+  const Expr *parseIndexOrSlice(const Expr *object, llvm::SMLoc loc, bool optional);
+  const Expr *parseSpreadOrExpr();
   bool parseArgs(Tok closer, llvm::SmallVectorImpl<const Expr *> &out);
 
   // Token helpers.
   const Token &cur() const { return tokens_[pos_]; }
   const Token &peek(size_t ahead) const;
   bool at(Tok kind) const { return cur().kind == kind; }
+  bool atWord(llvm::StringRef word) const {
+    return at(Tok::Ident) && cur().text == word;
+  }
   bool atTerminator() const;
   const Token &advance();
   bool accept(Tok kind);
@@ -70,6 +90,7 @@ private:
 
   void errorExpected(const llvm::Twine &what);
   void errorAt(llvm::SMLoc loc, const llvm::Twine &detail);
+  void reportUnclosed(llvm::SMLoc open);
 
   /// Bounds recursion so absurdly nested input can't overflow the stack.
   bool enterNesting();
@@ -82,6 +103,10 @@ private:
   size_t stmtStart_ = 0;
   int loopDepth_ = 0;
   int functionDepth_ = 0;
+  int squadDepth_ = 0;
+  bool sawServe_ = false;
+  /// Lets `x |> (f())` call the result of f() rather than become f(x).
+  const Expr *lastParenthesized_ = nullptr;
   int nesting_ = 0;
   int interpDepth_ = 0;
   bool reportedUnclosed_ = false;
