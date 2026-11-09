@@ -1,0 +1,52 @@
+#!/usr/bin/env noob
+btw a quick tour of everything NoobScript can do
+
+highkey MAX_AURA = 3
+lowkey aura = 0
+
+cook flex(name) {
+    itsgiving "${name} is him fr"
+}
+
+grind aura < MAX_AURA {
+    aura += 1
+    vibecheck aura == 2 { skibidi }
+    yap flex("noob"), aura
+}
+
+lowkey squad_goals = ["rizz", "aura"]
+slide(squad_goals, "drip")
+speedrun goal in squad_goals {
+    yap "- " + loud(goal)
+}
+
+lowkey stats = {"rizz": 1, "aura": 9000}
+speedrun stat in stats {
+    yap "${stat}: ${stats[stat]}"
+}
+
+cook counter() {
+    lowkey n = 0
+    itsgiving cook() {
+        n += 1
+        itsgiving n
+    }
+}
+lowkey tick = counter()
+tick()
+yap "ticked to", tick()
+
+tryna {
+    yeet "it's so over"
+} caught4k err {
+    yap "we're so back: ${err}"
+}
+
+tryna {
+    yap 1 / 0
+} caught4k err {
+    bruh "caught: ${err}"
+}
+
+ongod clout(squad_goals) == 3, "lost a goal somewhere"
+touchgrass

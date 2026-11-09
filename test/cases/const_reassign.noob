@@ -1,0 +1,4 @@
+btw EXIT: 1
+btw ERR: `PI` is highkey, it's not changing for you
+highkey PI = 3
+PI = 4

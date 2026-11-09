@@ -1,0 +1,13 @@
+btw Regression: a line starting with a bad token used to hang the parser.
+btw EXIT: 2
+btw ERR: expected an expression after '('
+btw ERR: expected an expression, found ')'
+btw ERR: expected an expression, found ']'
+yap 1
+yap (
+)
+] nope
+cook f() {
+    )
+    yap 2
+}

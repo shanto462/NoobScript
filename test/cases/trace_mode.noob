@@ -1,0 +1,9 @@
+btw ARGS: --trace
+btw ERR: [trace] 6 | lowkey x = 1
+btw ERR: [trace] 7 | vibecheck x == 1 {
+btw ERR: [trace] 8 | yap "inner"
+lowkey unused = npc
+lowkey x = 1
+vibecheck x == 1 {
+    yap "inner"             btw OUT: inner
+}

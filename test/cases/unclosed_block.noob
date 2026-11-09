@@ -1,0 +1,7 @@
+btw EXIT: 2
+btw ERR: unclosed_block.noob:5:17: error: you left me on read (unclosed)
+btw ERR: this '{' never gets closed
+yap "no"
+vibecheck nocap {  speedrun i in 1..2 {
+    yap i
+}

@@ -1,0 +1,46 @@
+#!/usr/bin/env noob
+btw NOERR:
+lowkey a = 2 + 3 * 4
+yap a                        btw OUT: 14
+yap 2 ** 3 ** 2              btw OUT: 512
+yap -2 ** 2                  btw OUT: -4
+yap 7 / 2                    btw OUT: 3.5
+yap 10 ratio 3, -1 % 3       btw OUT: 1 2
+yap 0.1 + 0.2                btw OUT: 0.30000000000000004
+yap 1e3, 1.5e1               btw OUT: 1000 15
+yap nocap, cap, npc          btw OUT: nocap cap npc
+yap "a" + 1, 1 + "a"         btw OUT: a1 1a
+yap sus cap, !nocap          btw OUT: nocap cap
+yap 1 == 1, "a" != "a", 1 == "1", npc == npc    btw OUT: nocap cap cap nocap
+yap "abc" < "abd", 2 >= 3    btw OUT: nocap cap
+yap nocap && cap, cap || 1   btw OUT: cap nocap
+
+lowkey x = 1 +
+    2
+yap x                        btw OUT: 3
+x += 4
+x *= 2
+x -= 4
+x /= 5
+yap x                        btw OUT: 2
+
+highkey H = [1]
+H[0] = 9
+yap H                        btw OUT: [9]
+
+mumble "a"
+mumble "b"
+yap                          btw OUT: ab
+vibecheck 0 { yap "0 is truthy" }     btw OUT: 0 is truthy
+vibecheck "" { yap "'' is truthy" }   btw OUT: '' is truthy
+vibecheck npc { yap "no" } nah { yap "npc is falsy" }   btw OUT: npc is falsy
+
+lowkey shadow = 1
+vibecheck nocap {
+    lowkey shadow = 2
+    yap shadow               btw OUT: 2
+}
+yap shadow                   btw OUT: 1
+lowkey clout_copy = clout
+lowkey loud = 5              btw builtins can be shadowed
+yap loud, clout_copy([1, 2]) btw OUT: 5 2

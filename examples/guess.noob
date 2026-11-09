@@ -1,0 +1,25 @@
+btw guess the number, uses spill() and rng()
+highkey target = rng(1, 20)
+lowkey tries = 0
+
+grind nocap {
+    lowkey raw = spill("guess 1 to 20: ")
+    vibecheck raw == npc {
+        yap "ghosted the game, it was ${target}"
+        touchgrass 1
+    }
+
+    lowkey guess = todigits(raw)
+    vibecheck guess == npc {
+        yap "that's not a number bestie"
+        skibidi
+    }
+
+    tries += 1
+    vibecheck guess < target { yap "too low, L" }
+    nvm guess > target { yap "too high, L" }
+    nah {
+        yap "W in ${tries} tries, no cap"
+        ghost
+    }
+}

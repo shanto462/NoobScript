@@ -1,0 +1,6 @@
+btw ARGS: --check
+btw OUT: check_mode.noob: passed the vibe check, no syntax errors
+btw NOERR:
+btw This would fail at runtime, but --check runs nothing.
+yap "not printed"
+yap nobody / 0

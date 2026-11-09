@@ -1,0 +1,6 @@
+btw ARGS: --sober
+btw EXIT: 1
+btw ERR: error: can't divide by zero
+yap "ran"                   btw OUT: ran
+yap 1 / 0
+yap "never"
