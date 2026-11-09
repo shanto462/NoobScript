@@ -1,0 +1,29 @@
+btw concurrent tasks: sendit starts one, holdup waits for it
+cook fetch(url, ms) {
+    nap(ms)
+    vibecheck gotit(url, "broken") {
+        yeet "${url} ghosted us"
+    }
+    itsgiving {"url": url, "took": ms}
+}
+
+cook fetch_or_npc(url, ms) {
+    tryna {
+        itsgiving holdup sendit fetch(url, ms)
+    } caught4k err {
+        bruh "warning: ${err}"
+        itsgiving npc
+    }
+}
+
+highkey URLS = [["/vibes", 30], ["/broken", 10], ["/rizz", 20]]
+
+lowkey tasks = [sendit fetch_or_npc(url, ms) speedrun [url, ms] in URLS]
+lowkey results = keep(holdup tasks, r => r != npc)
+
+speedrun r in results {
+    yap "${r.url} took ${r.took}ms"
+}
+
+lowkey winner = firstone([sendit fetch("/slow", 50), sendit fetch("/fast", 5)])
+yap "first back:", winner.url
