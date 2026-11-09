@@ -1,0 +1,226 @@
+btw NOERR:
+btw Section 7 async. AMBIG-n comments mark readings of unclear spec text.
+btw Every nap gap is at least 20ms and no assertion depends on an exact duration.
+
+lowkey trail = []
+cook mark(x) {
+    slide(trail, x)
+    itsgiving x
+}
+cook show() {
+    yap trail
+    trail = []
+}
+cook identity(v) { itsgiving v }
+cook after(ms, tag) {
+    nap(ms)
+    mark(tag)
+    itsgiving tag
+}
+cook failwith(v) { yeet v }
+cook failafter(ms, v) {
+    nap(ms)
+    yeet v
+}
+
+btw ---- sendit queues, main keeps running until it gives way
+lowkey t1 = sendit mark("t1 ran")
+yap clout(trail)                         btw OUT: 0
+yap vibeof(t1), t1                       btw OUT: task <task>
+yap holdup t1                            btw OUT: t1 ran
+show()                                   btw OUT: ["t1 ran"]
+
+btw ---- first-in first-out
+lowkey ta = sendit mark("a")
+lowkey tb = sendit mark("b")
+lowkey tc = sendit mark("c")
+mark("main before")
+holdup tc
+mark("main after")
+show()                                   btw OUT: ["main before", "a", "b", "c", "main after"]
+
+btw AMBIG-23: a task woken by holdup goes to the back of the queue
+lowkey qa = sendit mark("a")
+lowkey qb = sendit mark("b")
+holdup qa
+mark("main")
+show()                                   btw OUT: ["a", "b", "main"]
+
+btw ---- no give-way points means no interleaving
+cook loop3(tag) {
+    speedrun i in 1..3 { mark(tag + i) }
+}
+lowkey l1 = sendit loop3("x")
+lowkey l2 = sendit loop3("y")
+holdup [l1, l2]
+show()                                   btw OUT: ["x1", "x2", "x3", "y1", "y2", "y3"]
+
+btw ---- sendit inside a task doesn't give way either
+cook spawner() {
+    mark("spawner start")
+    lowkey kid = sendit mark("kid")
+    mark("spawner after sendit")
+    holdup kid
+    mark("spawner end")
+}
+holdup sendit spawner()
+show()                                   btw OUT: ["spawner start", "spawner after sendit", "kid", "spawner end"]
+
+btw ---- nap ordering
+lowkey s1 = sendit after(60, "slow")
+lowkey s2 = sendit after(20, "fast")
+yap holdup s1, holdup s2                 btw OUT: slow fast
+show()                                   btw OUT: ["fast", "slow"]
+lowkey n1 = sendit mark("during nap")
+nap(0)
+yap clout(trail)                         btw OUT: 1
+show()                                   btw OUT: ["during nap"]
+
+btw ---- holdup gives the value
+yap holdup sendit identity(7)            btw OUT: 7
+yap holdup sendit identity(npc)          btw OUT: npc
+yap holdup sendit identity([1, 2])       btw OUT: [1, 2]
+lowkey dup = sendit mark("once")
+yap holdup dup, holdup dup               btw OUT: once once
+show()                                   btw OUT: ["once"]
+
+btw ---- unary precedence of holdup and sendit
+lowkey u1 = sendit identity(3)
+yap holdup u1 + 1                        btw OUT: 4
+yap holdup u1 == 3                       btw OUT: nocap
+yap sus holdup u1                        btw OUT: cap
+yap -holdup u1                           btw OUT: -3
+btw ** binds tighter than holdup, so this raises a task to a power
+tryna { yap holdup u1 ** 2 } caught4k e { yap "err" }    btw OUT: err
+
+btw ---- holdup rethrows with the original message
+lowkey bad1 = sendit failwith("boom msg")
+tryna { holdup bad1 } caught4k e { yap e }       btw OUT: boom msg
+tryna { holdup bad1 } caught4k e { yap e }       btw OUT: boom msg
+lowkey bad2 = sendit failwith({"code": 42})
+tryna { holdup bad2 } caught4k e { yap e["code"] }    btw OUT: 42
+cook divzero() { itsgiving 1 / 0 }
+lowkey bad3 = sendit divzero()
+tryna { holdup bad3 } caught4k e { yap e }       btw OUT: can't divide by zero
+lowkey bad4 = sendit failwith("already failed")
+nap(20)
+tryna { holdup bad4 } caught4k e { yap e }       btw OUT: already failed
+cook midtask() {
+    itsgiving holdup sendit failwith("from depth")
+}
+tryna { holdup sendit midtask() } caught4k e { yap e }   btw OUT: from depth
+cook catcher() {
+    lowkey inner = sendit failwith("inner fail")
+    tryna { holdup inner } caught4k e { itsgiving "handled " + e }
+}
+yap holdup sendit catcher()              btw OUT: handled inner fail
+
+btw ---- holdup on lists
+lowkey h1 = sendit after(60, "one")
+lowkey h2 = sendit after(20, "two")
+yap holdup [h1, h2]                      btw OUT: ["one", "two"]
+yap holdup [h1, 5, "x", npc]             btw OUT: ["one", 5, "x", npc]
+yap holdup []                            btw OUT: []
+show()                                   btw OUT: ["two", "one"]
+lowkey lf1 = sendit identity(1)
+lowkey lf2 = sendit failwith("list fail")
+lowkey lf3 = sendit identity(3)
+tryna { holdup [lf1, lf2, lf3] } caught4k e { yap e }    btw OUT: list fail
+
+btw ---- holdup on non-tasks passes them through
+yap holdup 5, holdup "x", holdup npc     btw OUT: 5 x npc
+yap holdup [1, 2]                        btw OUT: [1, 2]
+yap holdup {"a": 1}                      btw OUT: {"a": 1}
+btw AMBIG-24: "pass through unchanged without waiting" means no give-way either
+lowkey nw = sendit mark("queued")
+lowkey hv = holdup 5
+yap clout(trail), hv                     btw OUT: 0 5
+lowkey hvl = holdup [1, [2]]
+yap clout(trail), hvl                    btw OUT: 0 [1, [2]]
+holdup nw
+show()                                   btw OUT: ["queued"]
+btw AMBIG-25: tasks nested inside a sub-list are non-task values at the top level
+lowkey ninner = sendit mark("inner")
+yap holdup [[ninner]]                    btw OUT: [[<task>]]
+yap clout(trail)                         btw OUT: 0
+holdup ninner
+show()                                   btw OUT: ["inner"]
+
+btw ---- firstone
+lowkey f1 = sendit after(60, "slow")
+lowkey f2 = sendit after(20, "quick")
+yap firstone([f1, f2])                   btw OUT: quick
+yap trail                                btw OUT: ["quick"]
+yap holdup f1                            btw OUT: slow
+show()                                   btw OUT: ["quick", "slow"]
+lowkey g1 = sendit failafter(20, "early fail")
+lowkey g2 = sendit after(60, "late")
+tryna { firstone([g1, g2]) } caught4k e { yap e }        btw OUT: early fail
+yap holdup g2                            btw OUT: late
+show()                                   btw OUT: ["late"]
+yap firstone([sendit identity(9)])       btw OUT: 9
+
+btw ---- sendit evaluates the callee and arguments now
+lowkey argx = 1
+lowkey ax = sendit identity(argx)
+argx = 2
+yap holdup ax                            btw OUT: 1
+lowkey seq = []
+cook tap(x) {
+    slide(seq, x)
+    itsgiving x
+}
+cook bodyof(v) { slide(seq, "body " + v) }
+lowkey ast = sendit bodyof(tap("arg"))
+slide(seq, "after sendit")
+holdup ast
+yap seq                                  btw OUT: ["arg", "after sendit", "body arg"]
+cook f_one() { itsgiving "first" }
+cook f_two() { itsgiving "second" }
+lowkey which = f_one
+lowkey wt = sendit which()
+which = f_two
+yap holdup wt                            btw OUT: first
+tryna { sendit failwith(failwith("arg err")) } caught4k e { yap e }    btw OUT: arg err
+lowkey iife = sendit (() => 5)()
+yap holdup iife                          btw OUT: 5
+
+btw ---- nested tasks
+cook child(tag) {
+    mark("child " + tag)
+    itsgiving tag + "!"
+}
+cook parent() {
+    mark("parent start")
+    lowkey c = sendit child("x")
+    mark("parent spawned")
+    lowkey r = holdup c
+    mark("parent got " + r)
+    itsgiving r
+}
+lowkey np = sendit parent()
+mark("main spawned")
+yap holdup np                            btw OUT: x!
+show()                                   btw OUT: ["main spawned", "parent start", "parent spawned", "child x", "parent got x!"]
+
+btw ---- several tasks can await the same task
+lowkey sharedtask = sendit after(20, "s")
+cook waiter(tag) {
+    lowkey r = holdup sharedtask
+    mark(tag + " got " + r)
+}
+lowkey w1 = sendit waiter("w1")
+lowkey w2 = sendit waiter("w2")
+holdup [w1, w2]
+yap gotit(trail, "w1 got s"), gotit(trail, "w2 got s")   btw OUT: nocap nocap
+trail = []
+
+btw ---- methods are tasks too, the object is captured and read when it runs
+squad Worker {
+    cook glowup(n) { me.n = n }
+    cook run(x) { itsgiving me.n + x }
+}
+lowkey wk = Worker(1)
+lowkey mt = sendit wk.run(2)
+wk.n = 10
+yap holdup mt                            btw OUT: 12

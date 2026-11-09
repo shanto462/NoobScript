@@ -1,0 +1,264 @@
+btw NOERR:
+btw Section 7 pattern matching. AMBIG-n comments mark readings of unclear spec text.
+
+cook classify(v) {
+    itdepends v {
+        on 0 { itsgiving "zero" }
+        on 1 | 2 { itsgiving "small" }
+        on -1 { itsgiving "neg one" }
+        on "a" { itsgiving "letter a" }
+        on nocap { itsgiving "true" }
+        on cap { itsgiving "false" }
+        on npc { itsgiving "nothing" }
+        on 10..20 { itsgiving "ten to twenty" }
+        on [] { itsgiving "empty list" }
+        on [a] { itsgiving "one: ${a}" }
+        on [a, b] when a > b { itsgiving "desc ${a} ${b}" }
+        on [a, b] { itsgiving "pair ${a} ${b}" }
+        on [h, ...t] { itsgiving "head ${h} tail ${t}" }
+        on {"name": n} { itsgiving "hi ${n}" }
+        nah { itsgiving "no idea" }
+    }
+    itsgiving "fell through"
+}
+
+btw ---- each kind
+yap classify(0)                          btw OUT: zero
+yap classify(1), classify(2)             btw OUT: small small
+yap classify(-1)                         btw OUT: neg one
+yap classify("a")                        btw OUT: letter a
+yap classify(nocap)                      btw OUT: true
+yap classify(cap)                        btw OUT: false
+yap classify(npc)                        btw OUT: nothing
+yap classify(10), classify(15), classify(20)     btw OUT: ten to twenty ten to twenty ten to twenty
+yap classify(12.5)                       btw OUT: ten to twenty
+yap classify(9), classify(21), classify(20.5)    btw OUT: no idea no idea no idea
+yap classify(3)                          btw OUT: no idea
+yap classify("0"), classify("x")         btw OUT: no idea no idea
+yap classify([])                         btw OUT: empty list
+yap classify([1])                        btw OUT: one: 1
+yap classify([2, 1])                     btw OUT: desc 2 1
+yap classify([1, 2])                     btw OUT: pair 1 2
+yap classify([1, 2, 3])                  btw OUT: head 1 tail [2, 3]
+yap classify({"name": "rex", "age": 3})  btw OUT: hi rex
+yap classify({"other": 1})               btw OUT: no idea
+yap classify({})                         btw OUT: no idea
+yap classify(1.0)                        btw OUT: small
+
+btw ---- a name pattern binds, it never compares with an outer variable
+lowkey outer = "outer"
+itdepends 5 {
+    on outer { yap outer }               btw OUT: 5
+}
+yap outer                                btw OUT: outer
+
+btw ---- _ matches anything and binds nothing
+itdepends npc {
+    on _ { yap "wild" }                  btw OUT: wild
+}
+itdepends [1, 2] {
+    on [_, _] { yap "two wild" }         btw OUT: two wild
+}
+
+btw ---- patterns that don't fit are not errors
+itdepends "str" {
+    on 1..5 { yap "no" }
+    on [a] { yap "no" }
+    on {"k": v} { yap "no" }
+    nah { yap "string fell to nah" }     btw OUT: string fell to nah
+}
+itdepends 5 {
+    on {"k": v} { yap "no" }
+    on [a] { yap "no" }
+    nah { yap "number fell to nah" }     btw OUT: number fell to nah
+}
+itdepends {"k": 1} {
+    on [a] { yap "no" }
+    on 1 { yap "no" }
+    on {"k": v} { yap v }                btw OUT: 1
+}
+itdepends npc {
+    on 1..5 { yap "no" }
+    on [a] { yap "no" }
+    on {"k": v} { yap "no" }
+    nah { yap "npc fell to nah" }        btw OUT: npc fell to nah
+}
+
+btw ---- no match does nothing
+itdepends 5 {
+    on 1 { yap "no" }
+    on "five" { yap "no" }
+}
+yap "after no match"                     btw OUT: after no match
+
+btw ---- first match wins
+cook firstwins(v) {
+    itdepends v {
+        on _ { itsgiving "first" }
+        on 1 { itsgiving "second" }
+    }
+}
+yap firstwins(1)                         btw OUT: first
+itdepends 3 {
+    on 1..5 { yap "range" }              btw OUT: range
+    on 3 { yap "exact" }
+    nah { yap "nah" }
+}
+
+btw ---- nah only runs when nothing matched
+itdepends 1 {
+    on 1 { yap "arm" }                   btw OUT: arm
+    nah { yap "no" }
+}
+itdepends 1 {
+    on 1 when cap { yap "no" }
+    nah { yap "nah after failed guard" } btw OUT: nah after failed guard
+}
+
+btw ---- the value is evaluated once
+lowkey evals = 0
+cook scrut() {
+    evals += 1
+    itsgiving 7
+}
+itdepends scrut() {
+    on 1 { yap "a" }
+    on 2 { yap "b" }
+    on 7 { yap "seven" }                 btw OUT: seven
+}
+yap evals                                btw OUT: 1
+
+btw ---- when guards
+lowkey guards = 0
+cook guard(v) {
+    guards += 1
+    itsgiving v
+}
+itdepends 2 {
+    on 1 when guard(nocap) { yap "no" }
+    on 2 when guard(cap) { yap "no" }
+    on 2 when guard(nocap) { yap "guard ok" }    btw OUT: guard ok
+    on 2 when guard(nocap) { yap "no" }
+}
+yap guards                               btw OUT: 2
+itdepends 3 {
+    on 1 | 3 when cap { yap "no" }
+    on 1 | 3 when nocap { yap "or guard" }       btw OUT: or guard
+}
+itdepends 1 {
+    on 1 when 0 { yap "zero is truthy" }         btw OUT: zero is truthy
+}
+itdepends 1 {
+    on 1 when npc { yap "no" }
+    nah { yap "npc guard fails" }        btw OUT: npc guard fails
+}
+
+btw ---- or patterns
+cook either(v) {
+    itdepends v {
+        on 1..3 | 7 | "x" { itsgiving "hit" }
+        on [1 | 2, y] { itsgiving "inner ${y}" }
+        on {"k": 1 | 2} { itsgiving "map or" }
+        nah { itsgiving "miss" }
+    }
+}
+yap either(2), either(7), either("x"), either(5)   btw OUT: hit hit hit miss
+yap either([2, 9]), either([3, 9])       btw OUT: inner 9 miss
+yap either({"k": 2}), either({"k": 3})   btw OUT: map or miss
+btw AMBIG-13: alternatives binding the same name give the matched alternative's value
+cook orbind(v) {
+    itdepends v {
+        on [x, 0] | [0, x] { itsgiving x }
+        nah { itsgiving "miss" }
+    }
+}
+yap orbind([9, 0]), orbind([0, 8])       btw OUT: 9 8
+
+btw AMBIG-16: the table shows 1..5 and -1 separately, a range with negative endpoints is assumed valid
+itdepends -3 {
+    on -5..-1 { yap "negative range" }   btw OUT: negative range
+}
+
+btw ---- list and map patterns nest
+itdepends [{"a": [1, 2]}, 3] {
+    on [{"a": [p, q]}, r] { yap p + q + r }      btw OUT: 6
+}
+itdepends [npc, 1] {
+    on [npc, x] { yap x }                btw OUT: 1
+}
+
+btw ---- a map pattern also fits a squad instance's fields
+squad Point {
+    cook glowup(x) { me.x = x }
+}
+itdepends Point(5) {
+    on {"x": v} { yap v }                btw OUT: 5
+}
+itdepends Point(5) {
+    on {"y": v} { yap "no" }
+    nah { yap "missing field" }          btw OUT: missing field
+}
+
+btw ---- bindings are scoped to their arm
+itdepends [1] {
+    on [leak] { }
+}
+tryna { yap leak } caught4k e { yap "not leaked" }   btw OUT: not leaked
+itdepends [1] {
+    on [g] when cap { yap "no" }
+    on [_] {
+        tryna { yap g } caught4k e { yap "guard binding gone" }    btw OUT: guard binding gone
+    }
+}
+itdepends 1 {
+    on 1 {
+        lowkey arm_local = 1
+    }
+}
+tryna { yap arm_local } caught4k e { yap "arm local gone" }        btw OUT: arm local gone
+
+btw ---- control flow passes through arms
+lowkey seen = []
+speedrun i in 1..5 {
+    itdepends i {
+        on 2 { skibidi }
+        on 4 { ghost }
+    }
+    slide(seen, i)
+}
+yap seen                                 btw OUT: [1, 3]
+cook viaitsgiving(v) {
+    itdepends v {
+        on 1 { itsgiving "returned" }
+    }
+    itsgiving "after"
+}
+yap viaitsgiving(1), viaitsgiving(2)     btw OUT: returned after
+tryna {
+    itdepends 1 {
+        on 1 { yeet "from arm" }
+    }
+} caught4k e {
+    yap e                                btw OUT: from arm
+}
+
+btw ---- nesting
+itdepends 1 {
+    on 1 {
+        itdepends 2 {
+            on 2 { yap "inner" }         btw OUT: inner
+        }
+        yap "outer arm"                  btw OUT: outer arm
+    }
+    on 2 { yap "no" }
+}
+
+btw ---- on and when stay usable as ordinary names
+lowkey when = 5
+lowkey on = 6
+itdepends 6 {
+    on x when x == on {
+        on = 7
+        yap x, on, when                  btw OUT: 6 7 5
+    }
+}

@@ -1,0 +1,5 @@
+btw EXIT: 2
+btw AMBIG-29: the spec says only "Not assignable", this assumes the existing assignment-target syntax check covers slices.
+yap "this must not run"
+lowkey xs = [1, 2, 3]
+xs[0:1] = [9]

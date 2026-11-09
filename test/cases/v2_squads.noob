@@ -1,0 +1,256 @@
+btw NOERR:
+btw Section 7 squads. AMBIG-n comments mark readings of unclear spec text.
+
+squad Dog {
+    cook glowup(name) { me.name = name }
+    cook speak() { itsgiving "${me.name} says woof" }
+}
+
+squad Puppy copies Dog {
+    cook glowup(name) {
+        og.glowup(name)
+        me.age = 0
+    }
+    cook speak() { itsgiving og.speak() + " (squeaky)" }
+}
+
+btw ---- the spec example
+lowkey p = Puppy("rex")
+yap p.speak()                            btw OUT: rex says woof (squeaky)
+yap p.name, p.age                        btw OUT: rex 0
+
+btw ---- printing and types
+yap p                                    btw OUT: <Puppy>
+yap Puppy                                btw OUT: <squad Puppy>
+yap [p, Dog]                             btw OUT: [<Puppy>, <squad Dog>]
+yap "${p} ${Dog}"                        btw OUT: <Puppy> <squad Dog>
+yap vibeof(p), vibeof(Dog), vibeof(Puppy)     btw OUT: Puppy squad squad
+yap vibeof(Dog("a"))                     btw OUT: Dog
+yap vibeof(p.speak)                      btw OUT: function
+
+btw ---- memberof checks the whole chain
+yap memberof(p, Puppy), memberof(p, Dog)      btw OUT: nocap nocap
+yap memberof(Dog("a"), Puppy)            btw OUT: cap
+squad Cat {
+}
+yap memberof(p, Cat)                     btw OUT: cap
+btw AMBIG-14: memberof on a non-instance is cap, not an error
+yap memberof(1, Dog), memberof("x", Dog), memberof(npc, Dog)  btw OUT: cap cap cap
+
+btw AMBIG-17: instances and squads compare by identity (the operator table only names lists, maps, functions)
+lowkey p2 = p
+yap p == p2, Puppy("rex") == Puppy("rex"), p == Dog      btw OUT: nocap cap cap
+yap Dog == Dog, Dog == Puppy             btw OUT: nocap cap
+
+btw ---- no glowup anywhere
+squad Bare {
+    cook hi() { itsgiving "hi" }
+}
+lowkey b = Bare()
+yap b.hi()                               btw OUT: hi
+tryna { Bare(1) } caught4k e { yap "err" }    btw OUT: err
+squad Bare2 copies Bare {
+}
+yap Bare2().hi()                         btw OUT: hi
+tryna { Bare2(1) } caught4k e { yap "err" }   btw OUT: err
+
+btw ---- glowup comes from anywhere up the chain, with me as the new instance
+squad Kid copies Dog {
+}
+squad GrandKid copies Kid {
+}
+lowkey gk = GrandKid("g")
+yap gk.speak(), vibeof(gk), gk.name      btw OUT: g says woof GrandKid g
+tryna { Kid() } caught4k e { yap "err" }           btw OUT: err
+tryna { Kid(1, 2) } caught4k e { yap "err" }       btw OUT: err
+
+btw ---- glowup arity and parameter features
+squad Params {
+    cook glowup(a, b = a + 1, ...c) { me.v = [a, b, c] }
+}
+yap Params(1).v                          btw OUT: [1, 2, []]
+yap Params(1, 3, 4, 5).v                 btw OUT: [1, 3, [4, 5]]
+tryna { Params() } caught4k e { yap "err" }        btw OUT: err
+
+btw ---- a glowup's return value doesn't replace the instance
+squad Returns {
+    cook glowup() { itsgiving 5 }
+}
+yap vibeof(Returns())                    btw OUT: Returns
+
+btw ---- fields
+squad Box {
+    cook glowup() { me.n = 0 }
+    cook bump() {
+        me.n += 1
+        itsgiving me.n
+    }
+    cook readnope() { itsgiving me.nope }
+    cook self() { itsgiving me }
+    cook pick(x = me.n) { itsgiving x }
+    cook pack(a, b = 2, ...c) { itsgiving [a, b, c] }
+}
+lowkey bx = Box()
+yap bx.n, bx.bump(), bx.bump(), bx.n     btw OUT: 0 1 2 2
+bx.color = "red"
+yap bx.color                             btw OUT: red
+bx.n = 10
+yap bx.n, bx.bump()                      btw OUT: 10 11
+yap bx.self() == bx                      btw OUT: nocap
+yap bx.pick(), bx.pick(1)                btw OUT: 11 1
+yap bx.pack(1), bx.pack(1, 5, 6)         btw OUT: [1, 2, []] [1, 5, [6]]
+tryna { bx.pack() } caught4k e { yap "err" }       btw OUT: err
+lowkey other = Box()
+tryna { yap other.color } caught4k e { yap "not shared" }    btw OUT: not shared
+
+btw ---- a missing field is an error
+tryna { yap bx.nope } caught4k e { yap "err" }     btw OUT: err
+tryna { yap bx.readnope() } caught4k e { yap "err" }    btw OUT: err
+tryna { bx.nope() } caught4k e { yap "err" }       btw OUT: err
+tryna { yap bx?.nope } caught4k e { yap "err" }    btw OUT: err
+
+btw ---- field hides method, for that instance only
+squad Hide {
+    cook who() { itsgiving "method" }
+}
+lowkey h1 = Hide()
+lowkey h2 = Hide()
+yap h1.who()                             btw OUT: method
+h1.who = "field"
+yap h1.who                               btw OUT: field
+yap h2.who()                             btw OUT: method
+tryna { h1.who() } caught4k e { yap "err" }        btw OUT: err
+h1.who = () => "lambda field"
+yap h1.who()                             btw OUT: lambda field
+
+btw ---- three levels of og
+squad A {
+    cook who() { itsgiving "A" }
+    cook chain() { itsgiving "A" }
+    cook callme() { itsgiving me.who() }
+    cook only_a() { itsgiving "only_a" }
+}
+squad B copies A {
+    cook who() { itsgiving "B" }
+    cook chain() { itsgiving "B>" + og.chain() }
+}
+squad C copies B {
+    cook who() { itsgiving "C" }
+    cook chain() { itsgiving "C>" + og.chain() }
+    cook skipped() { itsgiving og.only_a() }
+    cook missing() { itsgiving og.nope() }
+}
+squad D copies C {
+}
+yap B().chain()                          btw OUT: B>A
+yap C().chain()                          btw OUT: C>B>A
+yap D().chain()                          btw OUT: C>B>A
+yap C().callme(), D().callme(), B().callme()   btw OUT: C C B
+yap C().skipped()                        btw OUT: only_a
+tryna { C().missing() } caught4k e { yap "err" }   btw OUT: err
+
+squad L1 {
+    cook glowup(x) { me.l1 = x }
+}
+squad L2 copies L1 {
+    cook glowup(x) {
+        og.glowup(x + 1)
+        me.l2 = x
+    }
+}
+squad L3 copies L2 {
+    cook glowup(x) {
+        og.glowup(x + 1)
+        me.l3 = x
+    }
+}
+lowkey ll = L3(1)
+yap ll.l1, ll.l2, ll.l3                  btw OUT: 3 2 1
+
+btw og looks up methods, so a field hiding a method doesn't affect it
+squad Base {
+    cook m() { itsgiving "base m" }
+}
+squad Derived copies Base {
+    cook m() { itsgiving "derived m" }
+    cook viaog() {
+        me.m = "field"
+        itsgiving og.m()
+    }
+}
+yap Derived().viaog()                    btw OUT: base m
+
+btw ---- bound methods
+squad Tick {
+    cook glowup() { me.n = 0 }
+    cook tick() {
+        me.n += 1
+        itsgiving me.n
+    }
+    cook adder() { itsgiving x => me.n + x }
+    cook lam() { itsgiving cook() { itsgiving me.n } }
+    cook block() { itsgiving () => { itsgiving me.tick() } }
+    cook nestedlam() { itsgiving () => () => me.n }
+    cook boundself() { itsgiving me.tick }
+}
+lowkey tc = Tick()
+lowkey ticker = tc.tick
+yap ticker(), ticker(), tc.n             btw OUT: 1 2 2
+lowkey fnlist = [tc.tick]
+yap fnlist[0](), tc.n                    btw OUT: 3 3
+yap tc.boundself()()                     btw OUT: 4
+lowkey tc2 = Tick()
+tc2.tick()
+yap tc.adder()(10), tc2.adder()(10)      btw OUT: 14 11
+yap tc.lam()(), tc2.lam()()              btw OUT: 4 1
+lowkey tb = tc.block()
+yap tb(), tc.n                           btw OUT: 5 5
+yap tc.nestedlam()()()                   btw OUT: 5
+tryna { ticker(1) } caught4k e { yap "err" }       btw OUT: err
+
+btw a bound method sees later field changes on the same object
+squad Scaler {
+    cook glowup(k) { me.k = k }
+    cook apply(x) { itsgiving x * me.k }
+}
+lowkey s3 = Scaler(3)
+lowkey bound3 = s3.apply
+s3.k = 4
+yap bound3(1)                            btw OUT: 4
+yap remix([1, 2], Scaler(3).apply)       btw OUT: [3, 6]
+yap 2 |> Scaler(5).apply                 btw OUT: 10
+
+btw AMBIG-15: og keeps working inside lambdas, and og.m without a call is bound to me
+squad OgBase {
+    cook glowup() { me.n = "instance" }
+    cook whoami() { itsgiving me.n }
+}
+squad OgKid copies OgBase {
+    cook whoami() { itsgiving "kid" }
+    cook lam() { itsgiving () => og.whoami() }
+    cook bound() { itsgiving og.whoami }
+}
+yap OgKid().lam()()                      btw OUT: instance
+yap OgKid().bound()()                    btw OUT: instance
+
+btw ---- methods compose with the other new features
+squad Chainer {
+    cook glowup() { me.items = [] }
+    cook add(x) {
+        slide(me.items, x)
+        itsgiving me
+    }
+}
+yap Chainer().add(1).add(2).items        btw OUT: [1, 2]
+lowkey maybe = npc
+yap maybe?.add(1), Chainer()?.add(1).items    btw OUT: npc [1]
+
+squad Holder {
+    cook glowup(x) { me.x = x }
+    cook get() { itsgiving me.x }
+}
+lowkey holders = [Holder(1), Holder(2)]
+yap remix(holders, h => h.get())         btw OUT: [1, 2]
+yap keep(holders, h => h.x > 1)[0].get() btw OUT: 2
+lowkey [hd] = [Holder(5)]
+yap hd.get()                             btw OUT: 5

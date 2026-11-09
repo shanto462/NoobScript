@@ -1,0 +1,10 @@
+btw NOERR:
+btw AMBIG-32: the main script importing itself counts as a circular import
+btw so the top level must not run a second time.
+yap "top"                                btw OUT: top
+tryna {
+    rizzup "v2_modules_main_cycle.noob" as mainmod
+    yap "imported"
+} caught4k e {
+    yap "circular"                       btw OUT: circular
+}

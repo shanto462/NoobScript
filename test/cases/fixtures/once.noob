@@ -1,0 +1,6 @@
+yap "once loaded"
+lowkey n = 0
+cook bump() {
+    n += 1
+    itsgiving n
+}

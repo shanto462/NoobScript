@@ -1,0 +1,106 @@
+btw NOERR:
+btw Section 7 modules. Fixtures live in fixtures/. AMBIG-n comments mark readings of unclear spec text.
+
+btw ---- default name and member access
+rizzup "fixtures/mathz.noob"
+yap vibeof(mathz)                        btw OUT: module
+yap mathz                                btw OUT: <module mathz>
+yap mathz.PI                             btw OUT: 3
+yap mathz.add(1, 2)                      btw OUT: 3
+yap mathz.size([1, 2])                   btw OUT: 2
+btw AMBIG-18: a module member reads the module's current value of that name
+yap mathz.bump(), mathz.bump(), mathz.calls   btw OUT: 1 2 2
+lowkey thing = mathz.Thing(4)
+yap thing.get(), vibeof(thing), thing    btw OUT: 4 Thing <Thing>
+yap memberof(thing, mathz.Thing)         btw OUT: nocap
+
+btw ---- missing member is an error
+tryna { yap mathz.nope } caught4k e { yap "err" }    btw OUT: err
+tryna { yap mathz?.nope } caught4k e { yap "err" }   btw OUT: err
+tryna { mathz.nope() } caught4k e { yap "err" }      btw OUT: err
+
+btw ---- module names don't leak into the importer
+tryna { yap calls } caught4k e { yap "err" }         btw OUT: err
+tryna { yap add(1, 2) } caught4k e { yap "err" }     btw OUT: err
+
+btw ---- as
+rizzup "fixtures/aliased.noob" as al
+yap al.value, vibeof(al)                 btw OUT: alias value module
+btw AMBIG-34: with as, only the alias is bound, not the base name
+tryna { yap aliased } caught4k e { yap "err" }       btw OUT: err
+rizzup "fixtures/kebab-case.noob" as kc
+yap kc.value                             btw OUT: kebab
+rizzup "fixtures/2fast.noob" as fast
+yap fast.value                           btw OUT: fast
+rizzup "fixtures/squad.noob" as sq
+yap sq.value                             btw OUT: keyword base name
+
+btw ---- a file's top level runs once, however it's reached
+rizzup "fixtures/once.noob"              btw OUT: once loaded
+rizzup "fixtures/once.noob" as again
+btw AMBIG-31: a differently spelled path to the same file is the same module
+rizzup "fixtures/sub/../once.noob" as third
+rizzup "fixtures/reimport_once.noob"
+yap once.bump(), again.bump(), third.bump(), reimport_once.bump_through()    btw OUT: 1 2 3 4
+yap once.n                               btw OUT: 4
+
+btw ---- paths are relative to the importing file, not the working directory
+rizzup "fixtures/rel_a.noob"
+yap rel_a.value                          btw OUT: c+b+a
+yap rel_a.rel_b.value                    btw OUT: c+b
+yap rel_a.rel_b.rel_c.value              btw OUT: c
+
+btw ---- a syntax error in the imported file is catchable, and none of it runs
+tryna {
+    rizzup "fixtures/syntax_bad.noob"
+    yap "no"
+} caught4k e {
+    yap "caught syntax", vibeof(e)       btw OUT: caught syntax string
+}
+
+btw ---- a yeet at the top level of a module reaches the rizzup
+tryna {
+    rizzup "fixtures/yeets.noob"
+    yap "no"
+} caught4k e {
+    yap e                                btw OUT: module boom
+}
+
+btw AMBIG-30: importing a file that doesn't exist is a catchable error
+tryna {
+    rizzup "fixtures/does_not_exist.noob"
+    yap "no"
+} caught4k e {
+    yap "missing"                        btw OUT: missing
+}
+
+btw ---- circular imports
+tryna {
+    rizzup "fixtures/cycle_a.noob"
+    yap "no"
+} caught4k e {
+    yap "circular"                       btw OUT: circular
+}
+tryna {
+    rizzup "fixtures/self_cycle.noob"
+    yap "no"
+} caught4k e {
+    yap "self circular"                  btw OUT: self circular
+}
+
+btw ---- rizzup is a statement that binds in the current scope
+cook viafunction() {
+    rizzup "fixtures/mathz.noob" as inner
+    itsgiving inner.PI
+}
+yap viafunction()                        btw OUT: 3
+vibecheck nocap {
+    rizzup "fixtures/mathz.noob" as scoped
+    yap scoped.PI                        btw OUT: 3
+}
+tryna { yap scoped } caught4k e { yap "err" }        btw OUT: err
+
+btw AMBIG-19: a module can't see the importer's variables
+lowkey main_only = "secret"
+rizzup "fixtures/isolated.noob"
+tryna { yap isolated.peek() } caught4k e { yap "isolated" }  btw OUT: isolated

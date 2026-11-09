@@ -1,0 +1,10 @@
+btw EXIT: 1
+btw ERR: everyone's left on read (deadlock)
+lowkey ta = npc
+lowkey tb = npc
+cook waitb() { holdup tb }
+cook waita() { holdup ta }
+ta = sendit waitb()
+tb = sendit waita()
+holdup ta
+yap "never"

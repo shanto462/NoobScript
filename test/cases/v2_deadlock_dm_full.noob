@@ -1,0 +1,7 @@
+btw EXIT: 1
+btw ERR: everyone's left on read (deadlock)
+lowkey c = groupchat(1)
+dm(c, 1)
+yap "first dm fit"                       btw OUT: first dm fit
+dm(c, 2)
+yap "never"

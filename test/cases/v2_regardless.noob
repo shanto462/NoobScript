@@ -1,0 +1,218 @@
+btw NOERR:
+btw Section 7 regardless blocks.
+
+lowkey trail = []
+cook mark(x) { slide(trail, x) }
+cook show() {
+    yap trail
+    trail = []
+}
+
+btw ---- normal path
+tryna {
+    mark("t")
+} caught4k e {
+    mark("c")
+} regardless {
+    mark("r")
+}
+show()                                   btw OUT: ["t", "r"]
+tryna { mark("t") } regardless { mark("r") }
+show()                                   btw OUT: ["t", "r"]
+
+btw ---- caught4k and regardless together
+tryna {
+    mark("t")
+    yeet "x"
+} caught4k e {
+    mark("c " + e)
+} regardless {
+    mark("r")
+}
+show()                                   btw OUT: ["t", "c x", "r"]
+
+btw ---- no caught4k: regardless runs, the error keeps going
+tryna {
+    tryna {
+        mark("t")
+        yeet "x"
+    } regardless {
+        mark("r")
+    }
+    mark("unreachable")
+} caught4k e {
+    mark("outer " + e)
+}
+show()                                   btw OUT: ["t", "r", "outer x"]
+
+btw ---- across a call
+cook thrower() {
+    tryna { yeet "deep" } regardless { mark("r1") }
+}
+tryna { thrower() } caught4k e { mark("got " + e) }
+show()                                   btw OUT: ["r1", "got deep"]
+
+btw ---- inner runs before outer
+tryna {
+    tryna {
+        yeet "x"
+    } regardless {
+        mark("inner")
+    }
+} caught4k e {
+    mark("c")
+} regardless {
+    mark("outer")
+}
+show()                                   btw OUT: ["inner", "c", "outer"]
+
+btw ---- caught4k itself throws: regardless still runs, new error continues
+tryna {
+    tryna {
+        yeet "first"
+    } caught4k e {
+        mark("c")
+        yeet "second"
+    } regardless {
+        mark("r")
+    }
+} caught4k e {
+    mark("outer " + e)
+}
+show()                                   btw OUT: ["c", "r", "outer second"]
+
+btw ---- after itsgiving
+cook viareturn() {
+    tryna {
+        itsgiving "value"
+    } regardless {
+        mark("r")
+    }
+    mark("after")
+}
+yap viareturn()                          btw OUT: value
+show()                                   btw OUT: ["r"]
+
+btw the returned value is computed before regardless runs
+cook make() {
+    mark("made")
+    itsgiving "v"
+}
+cook retorder() {
+    tryna { itsgiving make() } regardless { mark("r") }
+}
+yap retorder()                           btw OUT: v
+show()                                   btw OUT: ["made", "r"]
+cook retvalue() {
+    lowkey v = 1
+    tryna { itsgiving v } regardless { v = 2 }
+}
+yap retvalue()                           btw OUT: 1
+
+btw itsgiving from caught4k
+cook fromcatch() {
+    tryna {
+        yeet "x"
+    } caught4k e {
+        itsgiving "caught " + e
+    } regardless {
+        mark("r")
+    }
+}
+yap fromcatch()                          btw OUT: caught x
+show()                                   btw OUT: ["r"]
+
+btw ---- after ghost and skibidi
+speedrun i in 1..3 {
+    tryna {
+        vibecheck i == 2 { ghost }
+        mark("body" + i)
+    } regardless {
+        mark("r" + i)
+    }
+}
+show()                                   btw OUT: ["body1", "r1", "r2"]
+speedrun i in 1..2 {
+    tryna { skibidi } regardless { mark("r" + i) }
+    mark("unreachable")
+}
+show()                                   btw OUT: ["r1", "r2"]
+lowkey ticks = 0
+grind ticks < 3 {
+    ticks += 1
+    tryna { ghost } regardless { mark("g" + ticks) }
+}
+show()                                   btw OUT: ["g1"]
+
+btw ---- override: regardless exits and replaces the outcome
+cook o1() {
+    tryna { itsgiving "orig" } regardless { itsgiving "override" }
+}
+yap o1()                                 btw OUT: override
+cook o2() {
+    tryna { yeet "orig" } regardless { itsgiving "swallowed" }
+}
+yap o2()                                 btw OUT: swallowed
+cook o3() {
+    tryna { itsgiving "orig" } regardless { yeet "replaced" }
+}
+tryna { o3() } caught4k e { yap e }      btw OUT: replaced
+tryna {
+    tryna { yeet "orig" } regardless { yeet "new" }
+} caught4k e {
+    yap e                                btw OUT: new
+}
+speedrun i in 1..2 {
+    tryna { yeet "lost" } regardless { skibidi }
+    mark("no")
+}
+mark("done")
+show()                                   btw OUT: ["done"]
+speedrun i in 1..3 {
+    mark("p" + i)
+    tryna { yeet "lost" } regardless { ghost }
+}
+show()                                   btw OUT: ["p1"]
+cook o4() {
+    speedrun i in 1..2 {
+        tryna { itsgiving "orig" } regardless { ghost }
+    }
+    itsgiving "after loop"
+}
+yap o4()                                 btw OUT: after loop
+speedrun i in 1..3 {
+    tryna {
+        ghost
+    } regardless {
+        mark("r" + i)
+        skibidi
+    }
+}
+show()                                   btw OUT: ["r1", "r2", "r3"]
+cook o5() {
+    speedrun i in 1..2 {
+        tryna { skibidi } regardless { itsgiving "out on " + i }
+    }
+    itsgiving "no"
+}
+yap o5()                                 btw OUT: out on 1
+
+btw ---- a regardless that finishes normally keeps the outcome
+cook o6() {
+    tryna {
+        itsgiving "orig"
+    } regardless {
+        tryna { yeet "inner" } caught4k e { mark(e) }
+    }
+}
+yap o6()                                 btw OUT: orig
+show()                                   btw OUT: ["inner"]
+speedrun i in 1..3 {
+    tryna { ghost } regardless {
+        speedrun j in 1..2 {
+            vibecheck j == 1 { ghost }
+        }
+    }
+    mark("no")
+}
+show()                                   btw OUT: []

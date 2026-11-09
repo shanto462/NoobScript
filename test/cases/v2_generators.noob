@@ -1,0 +1,258 @@
+btw NOERR:
+btw Section 7 generators. AMBIG-n comments mark readings of unclear spec text.
+
+lowkey trail = []
+cook mark(x) {
+    slide(trail, x)
+    itsgiving x
+}
+cook show() {
+    yap trail
+    trail = []
+}
+
+btw ---- laziness, nextup, cooked
+cook gen1() {
+    mark("start")
+    serve 1
+    mark("middle")
+    serve 2
+    mark("end")
+}
+lowkey g = gen1()
+yap trail, vibeof(g), g                  btw OUT: [] generator <generator>
+yap cooked(g)                            btw OUT: cap
+yap nextup(g)                            btw OUT: 1
+yap trail                                btw OUT: ["start"]
+btw AMBIG-20: cooked stays cap until the body has actually ended, even after the last serve
+yap cooked(g)                            btw OUT: cap
+yap nextup(g)                            btw OUT: 2
+yap trail, cooked(g)                     btw OUT: ["start", "middle"] cap
+yap nextup(g)                            btw OUT: npc
+yap trail, cooked(g)                     btw OUT: ["start", "middle", "end"] nocap
+yap nextup(g), cooked(g)                 btw OUT: npc nocap
+yap trail                                btw OUT: ["start", "middle", "end"]
+trail = []
+
+btw ---- speedrun walks it
+lowkey walked = []
+speedrun x in gen1() { slide(walked, x) }
+yap walked                               btw OUT: [1, 2]
+show()                                   btw OUT: ["start", "middle", "end"]
+
+btw ---- instances are independent
+cook count3() {
+    serve 1
+    serve 2
+    serve 3
+}
+lowkey i1 = count3()
+lowkey i2 = count3()
+yap nextup(i1), nextup(i1), nextup(i2)   btw OUT: 1 2 1
+
+btw ---- speedrun continues from where the generator is
+lowkey i3 = count3()
+nextup(i3)
+lowkey restwalk = []
+speedrun x in i3 { slide(restwalk, x) }
+yap restwalk                             btw OUT: [2, 3]
+lowkey again = []
+speedrun x in i3 { slide(again, x) }
+yap again, cooked(i3)                    btw OUT: [] nocap
+
+btw ---- infinite generators with ghost
+cook naturals() {
+    lowkey n = 1
+    grind nocap {
+        serve n
+        n += 1
+    }
+}
+lowkey sum = 0
+speedrun n in naturals() {
+    vibecheck n > 3 { ghost }
+    sum += n
+}
+yap sum                                  btw OUT: 6
+lowkey nat = naturals()
+speedrun n in nat {
+    vibecheck n == 2 { ghost }
+}
+yap nextup(nat), cooked(nat)             btw OUT: 3 cap
+
+btw ---- serve npc is a value, not the end
+cook servesnpc() {
+    serve npc
+    serve 1
+}
+lowkey sn = servesnpc()
+yap nextup(sn), cooked(sn), nextup(sn)   btw OUT: npc cap 1
+lowkey snlist = []
+speedrun x in servesnpc() { slide(snlist, x) }
+yap snlist                               btw OUT: [npc, 1]
+yap [...servesnpc()]                     btw OUT: [npc, 1]
+
+btw ---- itsgiving ends it, and its value is dropped
+cook withreturn() {
+    serve 1
+    itsgiving 9
+}
+lowkey wr = withreturn()
+yap nextup(wr), nextup(wr), cooked(wr)   btw OUT: 1 npc nocap
+yap [...withreturn()]                    btw OUT: [1]
+cook none(skip) {
+    vibecheck skip { itsgiving }
+    serve 1
+}
+yap vibeof(none(nocap))                  btw OUT: generator
+lowkey nn = none(nocap)
+yap nextup(nn), cooked(nn)               btw OUT: npc nocap
+yap [...none(cap)], [...none(nocap)]     btw OUT: [1] []
+
+btw ---- yeet propagates to whoever is advancing it
+cook bad() {
+    serve 1
+    yeet "gen boom"
+    serve 2
+}
+lowkey bd = bad()
+yap nextup(bd)                           btw OUT: 1
+tryna { nextup(bd) } caught4k e { yap e }       btw OUT: gen boom
+btw AMBIG-21: a generator that yeeted is finished
+yap cooked(bd), nextup(bd)               btw OUT: nocap npc
+lowkey badseen = []
+tryna {
+    speedrun x in bad() { slide(badseen, x) }
+} caught4k e {
+    yap e, badseen                       btw OUT: gen boom [1]
+}
+tryna { yap [...bad()] } caught4k e { yap e }   btw OUT: gen boom
+
+btw tryna inside the generator works across serve
+cook catches() {
+    tryna {
+        serve 1
+        yeet "inner"
+    } caught4k e {
+        serve "caught " + e
+    }
+    serve "done"
+}
+yap [...catches()]                       btw OUT: [1, "caught inner", "done"]
+
+btw regardless runs when the generator ends
+cook fin() {
+    tryna { serve 1 } regardless { mark("fin") }
+}
+lowkey fg = fin()
+yap nextup(fg), trail                    btw OUT: 1 []
+yap nextup(fg), trail, cooked(fg)        btw OUT: npc ["fin"] nocap
+trail = []
+
+btw ---- spread and comprehensions
+yap [0, ...count3(), 4]                  btw OUT: [0, 1, 2, 3, 4]
+cook sum3(a, b, c) { itsgiving a + b + c }
+yap sum3(...count3())                    btw OUT: 6
+yap [x * 2 speedrun x in count3() vibecheck x > 1]   btw OUT: [4, 6]
+cook pairs() {
+    serve [1, 2]
+    serve [3, 4]
+}
+lowkey ps = []
+speedrun [a, b] in pairs() { slide(ps, a + b) }
+yap ps                                   btw OUT: [3, 7]
+
+btw ---- what counts as a generator
+cook outerfn() {
+    lowkey inner = cook() { serve 1 }
+    itsgiving inner
+}
+yap vibeof(outerfn())                    btw OUT: function
+yap vibeof(outerfn()())                  btw OUT: generator
+btw AMBIG-22: an arrow function with a block counts as "a function containing serve"
+lowkey ag = () => { serve 7 }
+yap vibeof(ag()), nextup(ag())           btw OUT: generator 7
+
+btw ---- arguments are evaluated at the call, body is not
+cook echo(x) { serve x }
+lowkey argn = 1
+lowkey eg = echo(argn)
+argn = 2
+yap nextup(eg)                           btw OUT: 1
+tryna { echo() } caught4k e { yap "err" }       btw OUT: err
+tryna { echo(1, 2) } caught4k e { yap "err" }   btw OUT: err
+cook defaulted(a, b = a + 1, ...r) {
+    serve a
+    serve b
+    serve r
+}
+yap [...defaulted(1)]                    btw OUT: [1, 2, []]
+
+btw ---- serve from nested constructs
+cook walk(xs) {
+    speedrun x in xs {
+        vibecheck vibeof(x) == "list" {
+            speedrun y in walk(x) { serve y }
+        } nah {
+            serve x
+        }
+    }
+}
+yap [...walk([1, [2, [3]], 4])]          btw OUT: [1, 2, 3, 4]
+squad Bag {
+    cook glowup() { me.items = [1, 2] }
+    cook each() {
+        speedrun i in me.items { serve i * 10 }
+    }
+}
+yap [...Bag().each()]                    btw OUT: [10, 20]
+cook viaarms(v) {
+    itdepends v {
+        on 1 { serve "one" }
+        nah { serve "other" }
+    }
+}
+yap [...viaarms(1), ...viaarms(2)]       btw OUT: ["one", "other"]
+
+btw ---- generators inside tasks
+cook slowgen() {
+    serve "g1"
+    nap(40)
+    serve "g2"
+}
+cook consumer() {
+    lowkey sg = slowgen()
+    mark(nextup(sg))
+    mark(nextup(sg))
+}
+cook bystander() { mark("bystander") }
+lowkey t1 = sendit consumer()
+lowkey t2 = sendit bystander()
+holdup [t1, t2]
+show()                                   btw OUT: ["g1", "bystander", "g2"]
+
+cook numbers() {
+    serve 1
+    serve 2
+}
+lowkey shared = numbers()
+yap nextup(shared)                       btw OUT: 1
+cook restof() {
+    lowkey got = []
+    speedrun x in shared { slide(got, x) }
+    itsgiving got
+}
+yap holdup sendit restof()               btw OUT: [2]
+yap cooked(shared)                       btw OUT: nocap
+
+cook dblt(n) { itsgiving n * 2 }
+cook viatask() {
+    speedrun i in 1..2 { serve holdup sendit dblt(i) }
+}
+yap [...viatask()]                       btw OUT: [2, 4]
+
+cook spinbad() {
+    speedrun x in bad() { }
+    itsgiving "no"
+}
+tryna { holdup sendit spinbad() } caught4k e { yap e }   btw OUT: gen boom

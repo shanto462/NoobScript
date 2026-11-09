@@ -1,0 +1,310 @@
+btw NOERR:
+btw Section 7 expressions. AMBIG-n comments mark readings of unclear spec text.
+
+lowkey hits = 0
+cook hit(v) {
+    hits += 1
+    itsgiving v
+}
+cook inc(x) { itsgiving x + 1 }
+cook dbl(x) { itsgiving x * 2 }
+cook add(a, b) { itsgiving a + b }
+cook sub(a, b) { itsgiving a - b }
+cook boom() { yeet "boom ran" }
+cook adder() { itsgiving inc }
+lowkey nofn = npc
+lowkey five = 5
+
+btw ---- ternary
+yap nocap ? 1 : 2                        btw OUT: 1
+yap cap ? 1 : 2                          btw OUT: 2
+yap npc ? 1 : 2                          btw OUT: 2
+yap 0 ? "t" : "f"                        btw OUT: t
+yap "" ? "t" : "f"                       btw OUT: t
+yap [] ? "t" : "f"                       btw OUT: t
+yap nocap ? hit("a") : hit("b"), hits    btw OUT: a 1
+yap cap ? hit("a") : hit("b"), hits      btw OUT: b 2
+lowkey tern = cap ? 1 : 2
+yap tern                                 btw OUT: 2
+yap 1 + 1 == 2 ? "y" : "n"               btw OUT: y
+yap nocap || cap ? 1 : 2                 btw OUT: 1
+yap cap && nocap ? 1 : 2                 btw OUT: 2
+yap 5 ?? cap ? "a" : "b"                 btw OUT: a
+yap 1 |> inc ? "a" : "b"                 btw OUT: a
+yap nocap ? 1 : 2 |> inc                 btw OUT: 1
+yap cap ? 1 : 2 |> inc                   btw OUT: 3
+yap sus nocap ? 1 : 2                    btw OUT: 2
+yap nocap ? 1 |> inc : 9                 btw OUT: 2
+yap nocap ? cap ? 1 : 2 : 3              btw OUT: 2
+yap {nocap ? "a" : "b": 1}               btw OUT: {"a": 1}
+yap nocap?1:2                            btw OUT: 1
+btw AMBIG-1: ternary associativity is unstated, right-associative tested
+yap nocap ? 1 : nocap ? 2 : 3            btw OUT: 1
+yap cap ? 1 : cap ? 2 : 3                btw OUT: 3
+
+btw ---- pipe
+yap 1 |> inc                             btw OUT: 2
+yap 10 |> sub(3)                         btw OUT: 7
+yap 1 |> inc |> inc |> add(10)           btw OUT: 13
+yap 1 |>
+    inc                                  btw OUT: 2
+lowkey pipemap = {"f": inc}
+yap 3 |> pipemap.f                       btw OUT: 4
+yap 3 |> pipemap.f()                     btw OUT: 4
+yap 5 |> (x => x * 2)                    btw OUT: 10
+yap 1 |> add(...[2])                     btw OUT: 3
+yap [1, 2] |> remix(x => x * 2)          btw OUT: [2, 4]
+yap 5 |> (x => x * 2) |> inc             btw OUT: 11
+btw x |> f() is f(x), so adder() receives 5 and adder takes nothing
+tryna { yap 5 |> adder() } caught4k e { yap "err" }    btw OUT: err
+btw AMBIG-2: a parenthesised right side is treated as a plain value to call
+yap 5 |> (adder())                       btw OUT: 6
+
+btw ---- ??
+yap npc ?? 1                             btw OUT: 1
+yap 0 ?? 1                               btw OUT: 0
+yap cap ?? 1                             btw OUT: cap
+yap clout("" ?? "x")                     btw OUT: 0
+yap [] ?? 1                              btw OUT: []
+yap npc ?? npc ?? 3                      btw OUT: 3
+yap 1 ?? boom()                          btw OUT: 1
+tryna { yap npc ?? boom() } caught4k e { yap e }    btw OUT: boom ran
+yap npc ??
+    2                                    btw OUT: 2
+
+btw ---- precedence of |> and ??
+yap 1 + 2 |> dbl                         btw OUT: 6
+yap 1 ?? 3 |> dbl                        btw OUT: 2
+yap npc ?? 3 |> dbl                      btw OUT: 6
+yap 1 |> nofn ?? dbl                     btw OUT: 2
+yap cap || nocap |> vibeof               btw OUT: bool
+yap npc || npc ?? 1                      btw OUT: cap
+yap 1 ?? npc || cap                      btw OUT: 1
+yap 2 ?? 1 + 1                           btw OUT: 2
+yap npc == npc ?? 5                      btw OUT: nocap
+
+btw ---- field access on maps
+lowkey obj = {"a": 1, "f": cook(x) { itsgiving x + 1 }}
+yap obj.a                                btw OUT: 1
+yap obj.nope                             btw OUT: npc
+yap obj.f(1)                             btw OUT: 2
+yap {"k": 5}.k                           btw OUT: 5
+btw AMBIG-3: "m.k on a map is the same as m["k"]" is taken to include assignment
+obj.b = 2
+yap obj["b"]                             btw OUT: 2
+obj.a += 10
+yap obj.a                                btw OUT: 11
+lowkey kwmap = {"as": 1, "on": 2, "when": 3, "copies": 4}
+yap kwmap.as, kwmap.on, kwmap.when, kwmap.copies   btw OUT: 1 2 3 4
+btw AMBIG-4: dot on something that has no fields is taken to be an error
+tryna { yap [1].x } caught4k e { yap "err" }       btw OUT: err
+tryna { yap "s".x } caught4k e { yap "err" }       btw OUT: err
+tryna { yap five.x } caught4k e { yap "err" }      btw OUT: err
+
+btw ---- optional chaining
+lowkey nada = npc
+lowkey user = {"name": "rex", "pet": {"age": 3}, "tags": ["a", "b"], "hi": cook(x) { itsgiving x + "!" }, "nil": npc}
+yap nada?.x                              btw OUT: npc
+yap nada?.x.y.z                          btw OUT: npc
+yap nada?.x[0]                           btw OUT: npc
+yap nada?.x(1, 2)                        btw OUT: npc
+yap nada?.x.y[0](1).z                    btw OUT: npc
+lowkey sidefx = 0
+cook side() {
+    sidefx += 1
+    itsgiving 0
+}
+yap nada?.f(side()), nada?.xs[side()], sidefx      btw OUT: npc npc 0
+yap user?.name                           btw OUT: rex
+yap user?.pet.age                        btw OUT: 3
+yap user?.tags[1], user?.tags[-1]        btw OUT: b b
+yap user?.hi("yo")                       btw OUT: yo!
+yap user?.missing                        btw OUT: npc
+yap user?.missing.deep                   btw OUT: npc
+yap user?.missing[0]                     btw OUT: npc
+yap user?.missing("arg")                 btw OUT: npc
+yap user?.nil.deep                       btw OUT: npc
+yap user.missing?.deep.more              btw OUT: npc
+yap user?.pet?.nope?.x                   btw OUT: npc
+lowkey gets = 0
+cook getuser() {
+    gets += 1
+    itsgiving npc
+}
+yap getuser()?.a.b, gets                 btw OUT: npc 1
+yap nada?.x ? "t" : "f"                  btw OUT: f
+yap nada?.x ?? "fallback"                btw OUT: fallback
+yap user?.name ?? "fallback"             btw OUT: rex
+tryna { yap user?.tags[9] } caught4k e { yap "err" }         btw OUT: err
+tryna { yap user.missing.deep } caught4k e { yap "err" }     btw OUT: err
+tryna { yap nada.x } caught4k e { yap "err" }                btw OUT: err
+tryna { yap nada.x?.y } caught4k e { yap "err" }             btw OUT: err
+btw AMBIG-4: non-npc left side of ?. behaves like plain dot, so these error
+tryna { yap user?.name.deep } caught4k e { yap "err" }       btw OUT: err
+tryna { yap five?.x } caught4k e { yap "err" }               btw OUT: err
+btw AMBIG-5: parentheses end the "same chain", so .y sees npc directly
+tryna { yap (nada?.x).y } caught4k e { yap "err" }           btw OUT: err
+
+btw ---- negative index
+lowkey ns = [1, 2, 3]
+yap ns[-1], ns[-3], ns[-0]               btw OUT: 3 1 1
+yap "ab"[-1], "💀a"[-2]                  btw OUT: b 💀
+ns[-1] = 30
+yap ns                                   btw OUT: [1, 2, 30]
+ns[-2] += 5
+yap ns                                   btw OUT: [1, 7, 30]
+tryna { yap ns[-4] } caught4k e { yap "err" }      btw OUT: err
+tryna { yap "ab"[-3] } caught4k e { yap "err" }    btw OUT: err
+
+btw ---- slices
+lowkey xs = [10, 20, 30, 40, 50]
+btw AMBIG-6: the end bound is exclusive (the spec never says so)
+yap xs[1:3]                              btw OUT: [20, 30]
+yap xs[:2]                               btw OUT: [10, 20]
+yap xs[3:]                               btw OUT: [40, 50]
+yap xs[:]                                btw OUT: [10, 20, 30, 40, 50]
+yap xs[0:0]                              btw OUT: []
+yap xs[2:2]                              btw OUT: []
+yap xs[3:1]                              btw OUT: []
+yap xs[1:99]                             btw OUT: [20, 30, 40, 50]
+yap xs[99:]                              btw OUT: []
+yap xs[:99]                              btw OUT: [10, 20, 30, 40, 50]
+btw AMBIG-7: negative slice bounds count from the end, then clamp
+yap xs[-2:]                              btw OUT: [40, 50]
+yap xs[:-1]                              btw OUT: [10, 20, 30, 40]
+yap xs[1:-1]                             btw OUT: [20, 30, 40]
+yap xs[-3:-1]                            btw OUT: [30, 40]
+yap xs[-1:-3]                            btw OUT: []
+yap xs[-99:2]                            btw OUT: [10, 20]
+yap "hello"[1:3]                         btw OUT: el
+yap "hello"[:2], "hello"[3:]             btw OUT: he lo
+yap "hello"[-3:]                         btw OUT: llo
+yap "h💀llo"[1:3]                        btw OUT: 💀l
+yap "abc"[:]                             btw OUT: abc
+yap clout("hi"[5:]), clout(""[:])        btw OUT: 0 0
+yap xs[1:3][0], xs[1:3][-1]              btw OUT: 20 30
+yap clout(xs[1:])                        btw OUT: 4
+yap xs[1 + 1:clout(xs) - 1]              btw OUT: [30, 40]
+yap xs[nocap ? 0 : 1 : 2]                btw OUT: [10, 20]
+yap xs[(cap ? 0 : 1):2]                  btw OUT: [20]
+lowkey slicecopy = xs[:]
+slicecopy[0] = 99
+yap xs[0], slicecopy[0], xs[:] == xs     btw OUT: 10 99 cap
+lowkey nestedsrc = [[1]]
+lowkey nestedcp = nestedsrc[:]
+slide(nestedcp[0], 2)
+yap nestedsrc                            btw OUT: [[1, 2]]
+btw the table says slices are of "a list or string", so anything else errors
+tryna { yap obj[:] } caught4k e { yap "err" }      btw OUT: err
+tryna { yap five[0:1] } caught4k e { yap "err" }   btw OUT: err
+
+btw ---- arrows
+yap (x => x + 1)(2)                      btw OUT: 3
+yap ((a, b) => a + b)(2, 3)              btw OUT: 5
+yap (() => 7)()                          btw OUT: 7
+yap ((a) => a * 2)(4)                    btw OUT: 8
+yap (() => { itsgiving 9 })()            btw OUT: 9
+yap (() => { 9 })()                      btw OUT: npc
+yap (x => { itsgiving x + 1 })(1)        btw OUT: 2
+yap (x => ({"v": x}))(1).v               btw OUT: 1
+yap (1) + 2                              btw OUT: 3
+lowkey k = 10
+lowkey addk = x => x + k
+k = 20
+yap addk(1)                              btw OUT: 21
+lowkey mk = () => {
+    lowkey total = 0
+    itsgiving n => {
+        total += n
+        itsgiving total
+    }
+}
+lowkey acc = mk()
+acc(2)
+yap acc(3)                               btw OUT: 5
+lowkey fs = [x => x, y => y + 1]
+yap fs[1](1)                             btw OUT: 2
+yap add((x => x)(1), 2)                  btw OUT: 3
+yap boil([1, 2], (a, x) => a + x, 10)    btw OUT: 13
+btw AMBIG-8: an arrow body is a full expression and stops at , ) ] and the ternary colon
+yap (x => x > 0 ? "pos" : "neg")(1)      btw OUT: pos
+yap (x => x |> inc)(1)                   btw OUT: 2
+lowkey ff = nocap ? x => x + 1 : x => x + 2
+yap ff(0)                                btw OUT: 1
+
+btw ---- spread in lists and calls
+yap [...[1, 2], 3, ...[4]]               btw OUT: [1, 2, 3, 4]
+yap [0, ...[], 1]                        btw OUT: [0, 1]
+yap [...[], ...[]]                       btw OUT: []
+yap [..."a💀"]                           btw OUT: ["a", "💀"]
+yap [...{"a": 1, "b": 2}]                btw OUT: ["a", "b"]
+yap add(...[1, 2])                       btw OUT: 3
+yap add(1, ...[2])                       btw OUT: 3
+yap sub(...[5], ...[3])                  btw OUT: 2
+tryna { yap inc(...[1, 2]) } caught4k e { yap "err" }    btw OUT: err
+tryna { yap inc(...[]) } caught4k e { yap "err" }        btw OUT: err
+tryna { yap [...5] } caught4k e { yap "err" }            btw OUT: err
+tryna { yap [...npc] } caught4k e { yap "err" }          btw OUT: err
+tryna { yap add(...5) } caught4k e { yap "err" }         btw OUT: err
+lowkey spreadsrc = [[1]]
+lowkey spreadcp = [...spreadsrc]
+yap spreadcp == spreadsrc                btw OUT: cap
+slide(spreadcp, 2)
+slide(spreadcp[0], 9)
+yap spreadsrc, spreadcp                  btw OUT: [[1, 9]] [[1, 9], 2]
+
+btw ---- spread in map literals
+lowkey m1 = {"a": 1, "b": 2}
+yap {...m1, "c": 3}                      btw OUT: {"a": 1, "b": 2, "c": 3}
+yap {...{}, ...{}}                       btw OUT: {}
+yap m1                                   btw OUT: {"a": 1, "b": 2}
+yap {...m1} == m1                        btw OUT: cap
+yap [...[1], {...{"a": 1}}]              btw OUT: [1, {"a": 1}]
+btw AMBIG-9: a later duplicate key wins but the key keeps its first position
+yap {...m1, "a": 9}                      btw OUT: {"a": 9, "b": 2}
+yap {"a": 9, ...m1}                      btw OUT: {"a": 1, "b": 2}
+tryna { yap {...[1]} } caught4k e { yap "err" }          btw OUT: err
+tryna { yap {..."a"} } caught4k e { yap "err" }          btw OUT: err
+tryna { yap {...5} } caught4k e { yap "err" }            btw OUT: err
+tryna { yap {...npc} } caught4k e { yap "err" }          btw OUT: err
+
+btw ---- comprehensions
+yap [x * 2 speedrun x in [1, 2, 3] vibecheck x > 1]      btw OUT: [4, 6]
+yap [x speedrun x in 1..3]               btw OUT: [1, 2, 3]
+yap [x speedrun x in 1..9 by 4]          btw OUT: [1, 5, 9]
+yap [x speedrun x in 3..1 by -1]         btw OUT: [3, 2, 1]
+yap [x speedrun x in 5..1]               btw OUT: []
+yap [x speedrun x in []]                 btw OUT: []
+yap [c speedrun c in "h💀"]              btw OUT: ["h", "💀"]
+yap [mk1 speedrun mk1 in {"a": 1}]       btw OUT: ["a"]
+yap [x speedrun x in [0, npc, cap, "", []] vibecheck x]  btw OUT: [0, "", []]
+yap [x speedrun x in 1..4 vibecheck x ratio 2 == 0 ? nocap : cap]    btw OUT: [2, 4]
+yap [x > 1 ? "b" : "s" speedrun x in 1..2]               btw OUT: ["s", "b"]
+yap [[y speedrun y in 1..x] speedrun x in 1..3]          btw OUT: [[1], [1, 2], [1, 2, 3]]
+yap [x speedrun x in 1..2][0]            btw OUT: 1
+yap [x
+    speedrun x in 1..2
+    vibecheck x > 1]                     btw OUT: [2]
+btw AMBIG-10: comprehension speedrun takes a pattern like statement speedrun
+yap [ck + "=" + cv speedrun [ck, cv] in entries({"a": 1})]   btw OUT: ["a=1"]
+lowkey compres1 = [compv speedrun compv in [1]]
+tryna { yap compv } caught4k e { yap "not leaked" }      btw OUT: not leaked
+lowkey shade = "outer"
+lowkey compres2 = [shade speedrun shade in [1]]
+yap shade                                btw OUT: outer
+lowkey compfns = [(() => i) speedrun i in 1..3]
+yap compfns[0](), compfns[2]()           btw OUT: 1 3
+
+btw ---- interpolation of the new syntax
+yap "${nocap ? "a" : "b"}"               btw OUT: a
+yap "${xs[1:2]}"                         btw OUT: [20]
+yap "${[x speedrun x in 1..2]}"          btw OUT: [1, 2]
+yap "${(y => y + 1)(1)}"                 btw OUT: 2
+yap "${nada?.x ?? "d"} ${user?.name}"    btw OUT: d rex
+
+btw ---- contextual words stay usable as names
+lowkey as = 1
+lowkey on = 2
+lowkey when = 3
+lowkey copies = 4
+yap as + on + when + copies              btw OUT: 10

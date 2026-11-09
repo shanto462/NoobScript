@@ -1,0 +1,6 @@
+btw EXIT: 1
+btw ERR: everyone's left on read (deadlock)
+lowkey c = groupchat()
+yap "before"                             btw OUT: before
+checkdms(c)
+yap "never"

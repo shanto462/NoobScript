@@ -1,0 +1,4 @@
+btw EXIT: 2
+yap "this must not run"
+cook f() { itsgiving [1] }
+lowkey t = sendit f()[0]

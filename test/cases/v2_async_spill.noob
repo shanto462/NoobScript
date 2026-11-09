@@ -1,0 +1,9 @@
+btw NOERR:
+btw STDIN: hello
+btw spill gives way, so the task queued before it runs before main continues.
+cook p() { yap "task ran" }
+lowkey t = sendit p()
+lowkey line = spill()
+btw OUT: task ran
+yap line                                 btw OUT: hello
+yap spill()                              btw OUT: npc

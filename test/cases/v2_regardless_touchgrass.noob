@@ -1,0 +1,17 @@
+btw EXIT: 3
+btw NOERR:
+cook leave() {
+    tryna {
+        touchgrass 3
+    } caught4k e {
+        yap "caught?!"
+    } regardless {
+        yap "regardless must not run on touchgrass"
+    }
+}
+tryna {
+    leave()
+} regardless {
+    yap "outer regardless must not run either"
+}
+yap "unreachable"
