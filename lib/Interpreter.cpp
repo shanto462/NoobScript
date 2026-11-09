@@ -1388,6 +1388,7 @@ void Interpreter::runTask(Value holder, Value callee, std::vector<Value> args, S
   bool ok = call(callee, args, loc, result);
 
   task->done = true;
+  task->finishOrder = ++tasksFinished_;
   if (ok) {
     task->result = std::move(result);
   } else if (!exitRequested_) {
@@ -1455,19 +1456,26 @@ bool Interpreter::awaitFirst(ListObj *tasks, SMLoc loc, Value &out) {
   std::vector<Value> entrants = tasks->items;
   Fiber *self = scheduler_.current();
   for (;;) {
+    // Several tasks can finish before this one runs again, so list order
+    // doesn't say who won.
+    TaskObj *winner = nullptr;
     for (const Value &entrant : entrants) {
       auto *task = entrant.as<TaskObj>();
       if (!task) {
+        if (winner)
+          continue;
         out = entrant;
         return true;
       }
-      if (task->done) {
-        // The race was the await, so the losers count as observed too.
-        for (const Value &other : entrants)
-          if (auto *otherTask = other.as<TaskObj>())
-            otherTask->observed = true;
-        return finishAwait(task, out);
-      }
+      if (task->done && (!winner || task->finishOrder < winner->finishOrder))
+        winner = task;
+    }
+    if (winner) {
+      // The race was the await, so the losers count as observed too.
+      for (const Value &other : entrants)
+        if (auto *otherTask = other.as<TaskObj>())
+          otherTask->observed = true;
+      return finishAwait(winner, out);
     }
     for (const Value &entrant : entrants)
       entrant.as<TaskObj>()->waiters.push_back(self);
