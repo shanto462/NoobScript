@@ -1,0 +1,11 @@
+btw the classic
+cook vibe(n) {
+    vibecheck n ratio 15 == 0 { itsgiving "fizzbuzz" }
+    nvm n ratio 3 == 0 { itsgiving "fizz" }
+    nvm n ratio 5 == 0 { itsgiving "buzz" }
+    nah { itsgiving n }
+}
+
+speedrun i in 1..15 {
+    yap vibe(i)
+}

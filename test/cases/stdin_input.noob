@@ -1,0 +1,8 @@
+btw STDIN: shanto
+btw STDIN: 41
+btw OUT: name? hey shanto
+btw OUT: 42
+btw OUT: npc
+yap "hey " + spill("name? ")
+yap todigits(spill()) + 1
+yap spill()

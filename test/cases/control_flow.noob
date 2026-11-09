@@ -1,0 +1,52 @@
+btw NOERR:
+cook grade(score) {
+    vibecheck score >= 90 {
+        itsgiving "W"
+    } nvm score >= 50 {
+        itsgiving "mid"
+    }
+    nah {
+        itsgiving "L"
+    }
+}
+yap grade(95), grade(60), grade(1)     btw OUT: W mid L
+
+lowkey hp = 100
+lowkey seen = []
+grind hp > 0 {
+    hp -= 10
+    vibecheck hp == 80 { skibidi }
+    vibecheck hp < 60 { ghost }
+    slide(seen, hp)
+}
+yap seen, hp                           btw OUT: [90, 70, 60] 50
+
+speedrun i in 1..3 { mumble "${i}," }
+yap                                    btw OUT: 1,2,3,
+speedrun i in 10..1 by -3 { mumble "${i}," }
+yap                                    btw OUT: 10,7,4,1,
+speedrun i in 5..1 { yap "never" }
+speedrun i in 0..1 by 0.25 { mumble "${i}," }
+yap                                    btw OUT: 0,0.25,0.5,0.75,1,
+speedrun x in [1, "two"] { mumble "${x}," }
+yap                                    btw OUT: 1,two,
+speedrun c in "h💀y" { mumble "${c}," }
+yap                                    btw OUT: h,💀,y,
+speedrun k in {"a": 1, "b": 2} { mumble "${k}," }
+yap                                    btw OUT: a,b,
+
+speedrun i in 1..3 {
+    speedrun j in 1..3 {
+        vibecheck j == 2 { ghost }
+        yap i, j
+    }
+    vibecheck i == 2 { ghost }
+}
+btw OUT: 1 1
+btw OUT: 2 1
+
+lowkey grows = [1]
+speedrun x in grows {
+    vibecheck clout(grows) < 3 { slide(grows, x + 1) }
+}
+yap grows                              btw OUT: [1, 2, 3]

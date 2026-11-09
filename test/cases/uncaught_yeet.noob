@@ -1,0 +1,12 @@
+btw EXIT: 1
+btw ERR: uncaught_yeet.noob:7:5: error: you yeeted and nobody caught it
+btw ERR: uncaught yeet: it's so over
+btw ERR: call trace:
+btw ERR: in inner, called at uncaught_yeet.noob:9:16
+cook inner() {
+    yeet "it's so over"
+}
+cook outer() { inner() }
+yap "ran first"          btw OUT: ran first
+outer()
+yap "never"

@@ -1,0 +1,50 @@
+btw NOERR:
+cook add(a, b) { itsgiving a + b }
+yap add(1, 2)                  btw OUT: 3
+
+cook nothing() { }
+yap nothing()                  btw OUT: npc
+
+cook early() {
+    speedrun i in 1..10 {
+        vibecheck i == 3 { itsgiving i }
+    }
+    itsgiving "no"
+}
+yap early()                    btw OUT: 3
+
+cook fact(n) {
+    vibecheck n <= 1 { itsgiving 1 }
+    itsgiving n * fact(n - 1)
+}
+yap fact(10)                   btw OUT: 3628800
+
+cook is_even(n) { vibecheck n == 0 { itsgiving nocap } itsgiving is_odd(n - 1) }
+cook is_odd(n) { vibecheck n == 0 { itsgiving cap } itsgiving is_even(n - 1) }
+yap is_even(10)                btw OUT: nocap
+
+cook counter() {
+    lowkey n = 0
+    itsgiving cook() {
+        n += 1
+        itsgiving n
+    }
+}
+lowkey a = counter()
+lowkey b = counter()
+a()
+yap a(), b()                   btw OUT: 2 1
+
+lowkey fns = []
+speedrun i in 1..3 {
+    slide(fns, cook() { itsgiving i })
+}
+yap fns[0](), fns[2]()         btw OUT: 1 3
+
+cook twice(f, x) { itsgiving f(f(x)) }
+yap twice(cook(v) {
+    lowkey doubled = v * 2
+    itsgiving doubled
+}, 3)                          btw OUT: 12
+
+yap add, cook() { }, clout     btw OUT: <cook add> <cook> <cook clout>

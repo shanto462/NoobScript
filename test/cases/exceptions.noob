@@ -1,0 +1,59 @@
+btw NOERR:
+tryna {
+    yeet "it's so over"
+    yap "unreachable"
+} caught4k err {
+    yap "we're so back: ${err}"       btw OUT: we're so back: it's so over
+}
+
+tryna { yeet {"code": 42} } caught4k e { yap e["code"] }     btw OUT: 42
+tryna { yeet npc } caught4k e { yap vibeof(e) }              btw OUT: npc
+
+btw built-in errors are catchable and arrive as plain strings
+tryna { yap 1 / 0 } caught4k e { yap e }                     btw OUT: can't divide by zero
+tryna { yap nobody } caught4k e { yap e }                    btw OUT: `nobody` hasn't been declared with lowkey or highkey
+tryna { yap [1][5] } caught4k e { yap e }                    btw OUT: index 5 on a list of length 1
+tryna { yap 1 - "a" } caught4k e { yap e }                   btw OUT: can't use '-' on number and string
+tryna { clout() } caught4k e { yap e }                       btw OUT: `clout` wants 1 but got 0
+tryna { ongod 1 > 2, "lied" } caught4k e { yap e }           btw OUT: lied
+tryna { ongod cap } caught4k e { yap e }                     btw OUT: the 'ongod' condition was false
+
+btw unwinding crosses functions and loops, and rethrowing works
+cook boom() {
+    speedrun i in 1..3 { yeet i }
+}
+tryna {
+    tryna { boom() } caught4k inner { yeet inner + 10 }
+} caught4k outer {
+    yap outer                                                btw OUT: 11
+}
+
+btw errors inside the handler reach the next tryna out
+tryna {
+    tryna { yeet 1 } caught4k e { yap nope }
+} caught4k e { yap "outer got it" }                          btw OUT: outer got it
+
+btw a tryna inside a loop keeps the loop going
+speedrun i in 1..2 {
+    tryna { yeet i } caught4k e { skibidi }
+    yap "never"
+}
+
+btw a return from inside tryna leaves the function
+cook leave() {
+    tryna { itsgiving "left" } caught4k e { }
+    itsgiving "stayed"
+}
+yap leave()                                                  btw OUT: left
+
+btw runaway recursion is an ordinary catchable error, and the stack recovers
+cook down(n) { itsgiving down(n + 1) }
+tryna { down(0) } caught4k e { yap e }                       btw OUT: function calls went more than 1000 deep
+cook depth(n) { vibecheck n == 0 { itsgiving 0 } itsgiving 1 + depth(n - 1) }
+yap depth(900)                                               btw OUT: 900
+
+btw touchgrass can't be caught
+cook leave_now() { touchgrass 7 }
+tryna { leave_now() } caught4k e { yap "caught?!" }
+yap "unreachable"
+btw EXIT: 7
