@@ -1,5 +1,8 @@
 # NoobScript
 
+[![CI](https://github.com/shanto462/NoobScript/actions/workflows/ci.yml/badge.svg)](https://github.com/shanto462/NoobScript/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 A scripting language with Gen Z slang for keywords. It syntax-checks your file, then interprets it one statement at a time, with no compilation step. Written in C++ on LLVM's support libraries.
 
 ```noob
@@ -20,6 +23,8 @@ tryna {
 ```
 
 Also has squads (classes), modules, `sendit`/`holdup` async with group chats (channels), generators, pattern matching, destructuring, arrow functions, and more.
+
+> **Status:** 0.x and still young. The language may change between minor versions, and only Apple silicon macOS is built and tested. See the [changelog](CHANGELOG.md).
 
 ## Requirements
 
@@ -54,7 +59,7 @@ To run the language tests under AddressSanitizer and UBSan, build into a separat
 ```sh
 cmake -S . -B build-asan -G Ninja -DCMAKE_BUILD_TYPE=Debug \
   -DLLVM_DIR="$(brew --prefix llvm)/lib/cmake/llvm" \
-  -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
+  -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer"
 cmake --build build-asan
 NOOB_MIN_STACK=67108864 python3 test/run_tests.py build-asan/noob test/cases
 ```
@@ -143,3 +148,11 @@ The defaults follow Rust and Tokio. A flag beats its environment variable, and t
 - Function calls are capped at 1000 deep. Running out of stack before that is a catchable error, not a crash.
 
 The full language reference is in [DESIGN.md](DESIGN.md), and there are more programs in [examples/](examples/).
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Please report vulnerabilities privately, as described in [SECURITY.md](SECURITY.md).
+
+## License
+
+[MIT](LICENSE)
