@@ -24,7 +24,7 @@ tryna {
 }
 ```
 
-> **Status:** 0.x and still young. The language may change between minor versions, and only Apple silicon macOS is built and tested. See the [changelog](CHANGELOG.md).
+> **Status:** 0.x and still young. The language may change between minor versions, and only Apple silicon macOS is built and tested. See the [changelog](CHANGELOG.md) and [roadmap](ROADMAP.md).
 
 **Contents:** [Quick start](#quick-start) · [The slang](#the-slang) · [Language tour](#language-tour) · [Built-ins](#built-in-functions) · [Examples](#example-programs) · [Build](#build) · [Install](#install) · [Command line](#command-line)
 
