@@ -132,6 +132,8 @@ public:
   bool done = false;
   bool failed = false;
   bool observed = false;
+  /// Position in the order tasks finished, which `firstone` uses.
+  uint64_t finishOrder = 0;
   Value result;
   PendingError error;
   llvm::SmallVector<Fiber *, 2> waiters;

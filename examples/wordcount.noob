@@ -1,0 +1,14 @@
+btw top words in a file: noob examples/wordcount.noob README.md 5
+lowkey path = clout(cliargs) > 0 ? cliargs[0] : "README.md"
+lowkey how_many = todigits(clout(cliargs) > 1 ? cliargs[1] : "5")
+
+lowkey text = quiet(readfile(path))
+lowkey counts = {}
+speedrun word in keep(breakup(breakup(text, "\n") |> linkup(" "), " "), w => clout(w) > 3) {
+    counts[word] = (counts[word] ?? 0) + 1
+}
+
+lowkey ranked = flip(rank(entries(counts), pair => pair[1]))
+speedrun [word, count] in ranked[:how_many] {
+    yap count, word
+}

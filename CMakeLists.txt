@@ -50,6 +50,7 @@ if(Python3_FOUND)
   add_test(NAME golden
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/test/run_tests.py
             $<TARGET_FILE:noob> ${CMAKE_SOURCE_DIR}/test/cases)
+  add_test(NAME docs COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/test/test_docs.py $<TARGET_FILE:noob> ${CMAKE_SOURCE_DIR})
   add_test(NAME cli COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/test/test_cli.py $<TARGET_FILE:noob>)
 endif()
 

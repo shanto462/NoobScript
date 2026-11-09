@@ -179,6 +179,7 @@ private:
   int exitCode_ = 0;
 
   size_t liveTasks_ = 0;
+  uint64_t tasksFinished_ = 0;
   std::vector<Value> failedTasks_;
   llvm::SMLoc lastWaitLoc_;
   llvm::StringMap<Value> modules_;

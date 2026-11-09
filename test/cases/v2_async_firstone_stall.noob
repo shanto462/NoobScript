@@ -1,0 +1,18 @@
+btw NOERR:
+btw Regression: firstone must pick the task that finished first, even when
+btw a stall lets both finish before the waiting task gets to run again.
+cook racer(name, ms) {
+    nap(ms)
+    itsgiving name
+}
+
+cook stall() {
+    nap(1)
+    lowkey until = rn() + 80
+    grind rn() < until { }
+}
+
+lowkey slow = sendit racer("slow", 40)
+lowkey quick = sendit racer("quick", 20)
+sendit stall()
+yap firstone([slow, quick])     btw OUT: quick

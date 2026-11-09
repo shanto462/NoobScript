@@ -1,0 +1,48 @@
+btw classes are squads: inheritance with copies, parents with og
+rizzup "mathz.noob"
+
+squad Fighter {
+    cook glowup(name, hp = 100) {
+        me.name = name
+        me.hp = hp
+    }
+
+    cook power() {
+        itsgiving 10
+    }
+
+    cook hit(other) {
+        other.hp = mathz.clamp(other.hp - me.power())
+        yap "${me.name} hits ${other.name} for ${me.power()}, ${other.name} is at ${other.hp}"
+    }
+
+    cook alive() {
+        itsgiving me.hp > 0
+    }
+}
+
+squad Sigma copies Fighter {
+    cook glowup(name) {
+        og.glowup(name, 60)
+        me.grindset = 1
+    }
+
+    cook power() {
+        me.grindset += 1
+        itsgiving og.power() * me.grindset
+    }
+}
+
+lowkey npc_guy = Fighter("gary")
+lowkey hero = Sigma("patrick")
+
+grind npc_guy.alive() && hero.alive() {
+    hero.hit(npc_guy)
+    vibecheck npc_guy.alive() {
+        npc_guy.hit(hero)
+    }
+}
+
+lowkey winner = hero.alive() ? hero : npc_guy
+yap "W for ${winner.name}, a certified ${vibeof(winner)}"
+yap memberof(hero, Fighter), memberof(npc_guy, Sigma)
