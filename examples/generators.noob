@@ -1,0 +1,28 @@
+btw generators pause at serve, so infinite sequences are fine
+cook fibonacci() {
+    lowkey [a, b] = [0, 1]
+    grind nocap {
+        serve a
+        lowkey next = a + b
+        a = b
+        b = next
+    }
+}
+
+cook evens(source) {
+    speedrun x in source {
+        vibecheck x ratio 2 == 0 { serve x }
+    }
+}
+
+cook take(source, count) {
+    lowkey out = []
+    speedrun x in source {
+        slide(out, x)
+        vibecheck clout(out) == count { ghost }
+    }
+    itsgiving out
+}
+
+yap take(fibonacci(), 10)
+yap fibonacci() |> evens |> take(5)
