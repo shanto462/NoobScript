@@ -56,7 +56,7 @@ private:
   llvm::StringMap<Symbol> names_;
 };
 
-enum class BinaryOp { Add, Sub, Mul, Div, Mod, Pow, Eq, Ne, Lt, Le, Gt, Ge, And, Or };
+enum class BinaryOp { Add, Sub, Mul, Div, Mod, Pow, Eq, Ne, Lt, Le, Gt, Ge, And, Or, Nullish };
 enum class UnaryOp { Neg, Not };
 enum class AssignOp { Set, Add, Sub, Mul, Div };
 enum class PrintKind { Yap, Mumble, Bruh };
@@ -66,6 +66,7 @@ enum class PrintKind { Yap, Mumble, Bruh };
 struct Expr {
   enum class Kind {
     Number, String, Interp, Bool, Npc, Ident, List, Map, Lambda, Unary, Binary, Call, Index,
+    Member, OgMember, Slice, Ternary, Spread, ListComp, Spawn, Await,
   };
   Kind kind;
   llvm::SMLoc loc;
@@ -116,7 +117,7 @@ struct ListExpr : ExprOf<Expr::Kind::List> {
 };
 
 struct MapPair {
-  const Expr *key;
+  const Expr *key; // Null means `value` is spread into the map.
   const Expr *value;
 };
 
@@ -144,23 +145,111 @@ struct BinaryExpr : ExprOf<Expr::Kind::Binary> {
 struct CallExpr : ExprOf<Expr::Kind::Call> {
   const Expr *callee;
   llvm::ArrayRef<const Expr *> args;
-  CallExpr(llvm::SMLoc loc, const Expr *callee, llvm::ArrayRef<const Expr *> args)
-      : ExprOf(loc), callee(callee), args(args) {}
+  bool optional; // Part of a `?.` chain: an npc callee gives npc.
+  CallExpr(llvm::SMLoc loc, const Expr *callee, llvm::ArrayRef<const Expr *> args,
+           bool optional = false)
+      : ExprOf(loc), callee(callee), args(args), optional(optional) {}
 };
 
 struct IndexExpr : ExprOf<Expr::Kind::Index> {
   const Expr *object;
   const Expr *index;
-  IndexExpr(llvm::SMLoc loc, const Expr *object, const Expr *index)
-      : ExprOf(loc), object(object), index(index) {}
+  bool optional; // Part of a `?.` chain.
+  IndexExpr(llvm::SMLoc loc, const Expr *object, const Expr *index, bool optional)
+      : ExprOf(loc), object(object), index(index), optional(optional) {}
+};
+
+struct MemberExpr : ExprOf<Expr::Kind::Member> {
+  const Expr *object;
+  Symbol name;
+  bool optional; // Part of a `?.` chain.
+  MemberExpr(llvm::SMLoc loc, const Expr *object, Symbol name, bool optional)
+      : ExprOf(loc), object(object), name(name), optional(optional) {}
+};
+
+struct OgMemberExpr : ExprOf<Expr::Kind::OgMember> {
+  Symbol name;
+  OgMemberExpr(llvm::SMLoc loc, Symbol name) : ExprOf(loc), name(name) {}
+};
+
+struct SliceExpr : ExprOf<Expr::Kind::Slice> {
+  const Expr *object;
+  const Expr *start; // May be null.
+  const Expr *end;   // May be null.
+  bool optional;     // Part of a `?.` chain.
+  SliceExpr(llvm::SMLoc loc, const Expr *object, const Expr *start, const Expr *end,
+            bool optional)
+      : ExprOf(loc), object(object), start(start), end(end), optional(optional) {}
+};
+
+struct TernaryExpr : ExprOf<Expr::Kind::Ternary> {
+  const Expr *condition;
+  const Expr *thenValue;
+  const Expr *elseValue;
+  TernaryExpr(llvm::SMLoc loc, const Expr *condition, const Expr *thenValue,
+              const Expr *elseValue)
+      : ExprOf(loc), condition(condition), thenValue(thenValue), elseValue(elseValue) {}
+};
+
+/// `...x`, valid only directly inside a list literal or argument list.
+struct SpreadExpr : ExprOf<Expr::Kind::Spread> {
+  const Expr *inner;
+  SpreadExpr(llvm::SMLoc loc, const Expr *inner) : ExprOf(loc), inner(inner) {}
+};
+
+struct SpawnExpr : ExprOf<Expr::Kind::Spawn> {
+  const CallExpr *call;
+  SpawnExpr(llvm::SMLoc loc, const CallExpr *call) : ExprOf(loc), call(call) {}
+};
+
+struct AwaitExpr : ExprOf<Expr::Kind::Await> {
+  const Expr *operand;
+  AwaitExpr(llvm::SMLoc loc, const Expr *operand) : ExprOf(loc), operand(operand) {}
+};
+
+struct Pattern;
+
+struct MapPatternEntry {
+  const Expr *key;
+  const Pattern *pattern;
+};
+
+struct Pattern {
+  enum class Kind { Wildcard, Bind, Literal, Range, List, Map, Or };
+  Kind kind;
+  llvm::SMLoc loc;
+  Symbol name = nullptr;                 // Bind.
+  const Expr *low = nullptr;             // Literal value, or Range start.
+  const Expr *high = nullptr;            // Range end.
+  llvm::ArrayRef<const Pattern *> items; // List items, or Or alternatives.
+  const Pattern *rest = nullptr;         // List `...rest`, if present.
+  llvm::ArrayRef<MapPatternEntry> entries;
+
+  Pattern(Kind kind, llvm::SMLoc loc) : kind(kind), loc(loc) {}
+};
+
+/// The shared `pattern in a..b by c` or `pattern in iterable` of a loop.
+struct LoopHeader {
+  const Pattern *pattern = nullptr;
+  const Expr *start = nullptr; // The iterable when `end` is null.
+  const Expr *end = nullptr;
+  const Expr *step = nullptr; // Null means 1.
+};
+
+struct ListCompExpr : ExprOf<Expr::Kind::ListComp> {
+  const Expr *element;
+  LoopHeader header;
+  const Expr *filter; // May be null.
+  ListCompExpr(llvm::SMLoc loc, const Expr *element, LoopHeader header, const Expr *filter)
+      : ExprOf(loc), element(element), header(header), filter(filter) {}
 };
 
 // ---- Statements -------------------------------------------------------------
 
 struct Stmt {
   enum class Kind {
-    Decl, Assign, Print, If, While, ForRange, ForEach, Func, Return, Throw, Try,
-    Assert, Exit, Break, Continue, Expr,
+    Decl, Assign, Print, If, While, For, Func, Return, Throw, Try,
+    Assert, Exit, Break, Continue, Expr, Serve, Match, Squad, Rizzup,
   };
   Kind kind;
   llvm::SMLoc loc;
@@ -181,10 +270,19 @@ struct Block {
   bool needsScope = false;
 };
 
+struct Param {
+  Symbol name;
+  const Expr *defaultValue; // May be null.
+  bool isRest;
+};
+
 struct FunctionDecl {
   Symbol name; // Null for a lambda.
-  llvm::ArrayRef<Symbol> params;
+  llvm::ArrayRef<Param> params;
   Block body;
+  size_t requiredParams = 0;
+  bool hasRest = false;
+  bool isGenerator = false;
 };
 
 struct LambdaExpr : ExprOf<Expr::Kind::Lambda> {
@@ -193,15 +291,15 @@ struct LambdaExpr : ExprOf<Expr::Kind::Lambda> {
 };
 
 struct DeclStmt : StmtOf<Stmt::Kind::Decl> {
-  Symbol name;
+  const Pattern *pattern;
   bool isConst;
   const Expr *init;
-  DeclStmt(llvm::SMLoc loc, Symbol name, bool isConst, const Expr *init)
-      : StmtOf(loc), name(name), isConst(isConst), init(init) {}
+  DeclStmt(llvm::SMLoc loc, const Pattern *pattern, bool isConst, const Expr *init)
+      : StmtOf(loc), pattern(pattern), isConst(isConst), init(init) {}
 };
 
 struct AssignStmt : StmtOf<Stmt::Kind::Assign> {
-  const Expr *target; // IdentExpr or IndexExpr.
+  const Expr *target; // IdentExpr, IndexExpr, or MemberExpr.
   AssignOp op;
   const Expr *value;
   AssignStmt(llvm::SMLoc loc, const Expr *target, AssignOp op, const Expr *value)
@@ -234,23 +332,11 @@ struct WhileStmt : StmtOf<Stmt::Kind::While> {
       : StmtOf(loc), condition(condition), body(body) {}
 };
 
-struct ForRangeStmt : StmtOf<Stmt::Kind::ForRange> {
-  Symbol var;
-  const Expr *start;
-  const Expr *end;
-  const Expr *step; // Null means 1.
+struct ForStmt : StmtOf<Stmt::Kind::For> {
+  LoopHeader header;
   Block body;
-  ForRangeStmt(llvm::SMLoc loc, Symbol var, const Expr *start, const Expr *end,
-               const Expr *step, Block body)
-      : StmtOf(loc), var(var), start(start), end(end), step(step), body(body) {}
-};
-
-struct ForEachStmt : StmtOf<Stmt::Kind::ForEach> {
-  Symbol var;
-  const Expr *iterable;
-  Block body;
-  ForEachStmt(llvm::SMLoc loc, Symbol var, const Expr *iterable, Block body)
-      : StmtOf(loc), var(var), iterable(iterable), body(body) {}
+  ForStmt(llvm::SMLoc loc, LoopHeader header, Block body)
+      : StmtOf(loc), header(header), body(body) {}
 };
 
 struct FuncStmt : StmtOf<Stmt::Kind::Func> {
@@ -270,10 +356,49 @@ struct ThrowStmt : StmtOf<Stmt::Kind::Throw> {
 
 struct TryStmt : StmtOf<Stmt::Kind::Try> {
   Block body;
-  Symbol errorName;
+  Symbol errorName;          // Null when there's no `caught4k`.
   Block handler;
-  TryStmt(llvm::SMLoc loc, Block body, Symbol errorName, Block handler)
-      : StmtOf(loc), body(body), errorName(errorName), handler(handler) {}
+  const Block *finallyBody;  // Null when there's no `regardless`.
+  TryStmt(llvm::SMLoc loc, Block body, Symbol errorName, Block handler,
+          const Block *finallyBody)
+      : StmtOf(loc), body(body), errorName(errorName), handler(handler),
+        finallyBody(finallyBody) {}
+};
+
+struct ServeStmt : StmtOf<Stmt::Kind::Serve> {
+  const Expr *value;
+  ServeStmt(llvm::SMLoc loc, const Expr *value) : StmtOf(loc), value(value) {}
+};
+
+struct MatchArm {
+  const Pattern *pattern;
+  const Expr *guard; // May be null.
+  Block body;
+};
+
+struct MatchStmt : StmtOf<Stmt::Kind::Match> {
+  const Expr *subject;
+  llvm::ArrayRef<MatchArm> arms;
+  const Block *elseBody; // Null when there's no `nah`.
+  MatchStmt(llvm::SMLoc loc, const Expr *subject, llvm::ArrayRef<MatchArm> arms,
+            const Block *elseBody)
+      : StmtOf(loc), subject(subject), arms(arms), elseBody(elseBody) {}
+};
+
+struct SquadStmt : StmtOf<Stmt::Kind::Squad> {
+  Symbol name;
+  const Expr *parent; // May be null.
+  llvm::ArrayRef<const FunctionDecl *> methods;
+  SquadStmt(llvm::SMLoc loc, Symbol name, const Expr *parent,
+            llvm::ArrayRef<const FunctionDecl *> methods)
+      : StmtOf(loc), name(name), parent(parent), methods(methods) {}
+};
+
+struct RizzupStmt : StmtOf<Stmt::Kind::Rizzup> {
+  llvm::StringRef path;
+  Symbol alias;
+  RizzupStmt(llvm::SMLoc loc, llvm::StringRef path, Symbol alias)
+      : StmtOf(loc), path(path), alias(alias) {}
 };
 
 struct AssertStmt : StmtOf<Stmt::Kind::Assert> {

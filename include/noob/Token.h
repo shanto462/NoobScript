@@ -39,7 +39,15 @@ enum class Tok {
   KwNpc,
   KwSus,
   KwRatio,
-  KwReserved,
+  KwSquad,
+  KwMe,
+  KwOg,
+  KwRizzup,
+  KwSendit,
+  KwHoldup,
+  KwServe,
+  KwItdepends,
+  KwRegardless,
 
   // Punctuation.
   LParen,
@@ -51,6 +59,14 @@ enum class Tok {
   Comma,
   Colon,
   DotDot,
+  DotDotDot,
+  Dot,
+  Arrow,
+  Question,
+  QuestionDot,
+  QuestionQuestion,
+  PipeArrow,
+  Bar,
 
   // Operators.
   Plus,

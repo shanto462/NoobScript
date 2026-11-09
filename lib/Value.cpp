@@ -51,6 +51,27 @@ void Env::define(Symbol name, Value value, bool isConst) {
   }
 }
 
+const Value *ClassObj::findMethod(Symbol method) const {
+  for (const ClassObj *squad = this; squad; squad = squad->parent.as<ClassObj>()) {
+    auto it = squad->methods.find(method);
+    if (it != squad->methods.end())
+      return &it->second;
+  }
+  return nullptr;
+}
+
+bool ClassObj::isOrCopies(const ClassObj *other) const {
+  for (const ClassObj *squad = this; squad; squad = squad->parent.as<ClassObj>())
+    if (squad == other)
+      return true;
+  return false;
+}
+
+GeneratorObj::~GeneratorObj() {
+  if (fiber && scheduler.isSuspended(fiber))
+    scheduler.destroySuspended(fiber);
+}
+
 // ---- Values -----------------------------------------------------------------
 
 Value Value::string(std::string s) { return Value(new StringObj(std::move(s))); }
@@ -67,7 +88,14 @@ StringRef Value::typeName() const {
   case Object::Kind::List: return "list";
   case Object::Kind::Map: return "map";
   case Object::Kind::Function:
-  case Object::Kind::Builtin: return "function";
+  case Object::Kind::Builtin:
+  case Object::Kind::BoundMethod: return "function";
+  case Object::Kind::Class: return "squad";
+  case Object::Kind::Instance: return as<InstanceObj>()->classObj()->name;
+  case Object::Kind::Module: return "module";
+  case Object::Kind::Task: return "task";
+  case Object::Kind::Generator: return "generator";
+  case Object::Kind::Channel: return "groupchat";
   }
   return "npc";
 }
@@ -116,6 +144,27 @@ static void appendObjectRepr(std::string &out, const Value &value, ObjectStack &
   }
   if (auto *builtin = value.as<BuiltinObj>()) {
     out += "<cook " + builtin->name.str() + ">";
+    return;
+  }
+
+  if (auto *bound = value.as<BoundMethodObj>()) {
+    appendObjectRepr(out, bound->function, stack);
+    return;
+  }
+  if (auto *squad = value.as<ClassObj>()) {
+    out += "<squad " + squad->name.str() + ">";
+    return;
+  }
+  if (auto *instance = value.as<InstanceObj>()) {
+    out += "<" + instance->classObj()->name.str() + ">";
+    return;
+  }
+  if (auto *module = value.as<ModuleObj>()) {
+    out += "<module " + module->name.str() + ">";
+    return;
+  }
+  if (value.as<TaskObj>() || value.as<GeneratorObj>() || value.as<ChannelObj>()) {
+    out += "<" + value.typeName().str() + ">";
     return;
   }
 

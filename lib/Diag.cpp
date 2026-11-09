@@ -30,6 +30,18 @@ bool Diag::incomplete() const {
   return first->atEnd;
 }
 
+std::string Diag::takeFirstError() {
+  if (entries_.empty())
+    return "";
+  const Entry *first = &entries_.front();
+  for (const Entry &entry : entries_)
+    if (earlier(entry.loc, first->loc))
+      first = &entry;
+  std::string message = describe(first->loc) + ": " + first->detail;
+  entries_.clear();
+  return message;
+}
+
 void Diag::flush() {
   std::stable_sort(entries_.begin(), entries_.end(),
                    [](const Entry &a, const Entry &b) {

@@ -19,7 +19,9 @@ namespace noob {
 /// Base class of everything that lives on the heap.
 class Object : public llvm::RefCountedBase<Object> {
 public:
-  enum class Kind { String, List, Map, Function, Builtin };
+  enum class Kind {
+    String, List, Map, Function, Builtin, Class, Instance, BoundMethod, Module, Task, Generator, Channel,
+  };
 
   virtual ~Object() = default;
   Kind kind() const { return kind_; }

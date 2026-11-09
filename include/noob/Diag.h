@@ -44,6 +44,11 @@ public:
   std::string describe(llvm::SMLoc loc) const;
 
   bool sober() const { return sober_; }
+  llvm::SourceMgr &sources() { return sm_; }
+
+  /// Returns "file:line:col: detail" for the earliest syntax error, and
+  /// discards all of them. Used when an error becomes a catchable value.
+  std::string takeFirstError();
 
 private:
   struct Entry {

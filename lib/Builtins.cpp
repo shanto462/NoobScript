@@ -1,14 +1,17 @@
 #include "noob/Interpreter.h"
 
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <chrono>
 #include <cmath>
+#include <algorithm>
 #include <iostream>
+#include <mutex>
+#include <numeric>
 #include <random>
 #include <string>
-#include <thread>
 
 using namespace llvm;
 
@@ -70,8 +73,15 @@ static bool spill(BuiltinCall &c) {
     outs() << c.args[0].display();
   outs().flush();
 
+  // Read off-thread so other tasks keep running. Concurrent spills queue up.
+  static std::mutex stdinMutex;
   std::string line;
-  if (!std::getline(std::cin, line)) {
+  bool gotLine = false;
+  c.interp.scheduler().runBlocking([&] {
+    std::lock_guard<std::mutex> lock(stdinMutex);
+    gotLine = static_cast<bool>(std::getline(std::cin, line));
+  });
+  if (!gotLine) {
     c.result = Value();
     return true;
   }
@@ -340,7 +350,282 @@ static bool nap(BuiltinCall &c) {
   if (!(ms >= 0))
     return c.error("can't nap for negative time", "nap needs a non-negative number of ms");
   outs().flush();
-  std::this_thread::sleep_for(std::chrono::duration<double, std::milli>(ms));
+  c.interp.scheduler().sleepFor(ms);
+  return true;
+}
+
+// ---- Higher-order helpers ---------------------------------------------------
+
+static bool remix(BuiltinCall &c) {
+  ListObj *list;
+  if (!c.list(0, list))
+    return false;
+  std::vector<Value> source = list->items, out;
+  out.reserve(source.size());
+  for (const Value &item : source) {
+    Value mapped;
+    if (!c.interp.call(c.args[1], {item}, c.loc, mapped))
+      return false;
+    out.push_back(std::move(mapped));
+  }
+  c.result = Value(new ListObj(std::move(out)));
+  return true;
+}
+
+static bool keep(BuiltinCall &c) {
+  ListObj *list;
+  if (!c.list(0, list))
+    return false;
+  std::vector<Value> source = list->items, out;
+  for (const Value &item : source) {
+    Value verdict;
+    if (!c.interp.call(c.args[1], {item}, c.loc, verdict))
+      return false;
+    if (verdict.truthy())
+      out.push_back(item);
+  }
+  c.result = Value(new ListObj(std::move(out)));
+  return true;
+}
+
+static bool boil(BuiltinCall &c) {
+  ListObj *list;
+  if (!c.list(0, list))
+    return false;
+  std::vector<Value> source = list->items;
+  Value accumulator = c.args[2];
+  for (const Value &item : source) {
+    Value next;
+    if (!c.interp.call(c.args[1], {accumulator, item}, c.loc, next))
+      return false;
+    accumulator = std::move(next);
+  }
+  c.result = std::move(accumulator);
+  return true;
+}
+
+static bool rank(BuiltinCall &c) {
+  ListObj *list;
+  if (!c.list(0, list))
+    return false;
+  std::vector<Value> items = list->items;
+
+  // Keys are computed up front, so the comparison never runs user code and
+  // user code can't break the sort's ordering guarantees.
+  std::vector<Value> keys;
+  keys.reserve(items.size());
+  for (const Value &item : items) {
+    Value key = item;
+    if (c.args.size() > 1 && !c.interp.call(c.args[1], {item}, c.loc, key))
+      return false;
+    keys.push_back(std::move(key));
+  }
+
+  bool allNumbers = std::all_of(keys.begin(), keys.end(), [](const Value &key) {
+    return key.isNumber() && !std::isnan(key.asNumber());
+  });
+  bool allStrings = std::all_of(keys.begin(), keys.end(),
+                                [](const Value &key) { return key.as<StringObj>() != nullptr; });
+  if (!allNumbers && !allStrings)
+    return c.error(TypeHeadline, "`rank` keys must be all numbers or all strings");
+
+  std::vector<size_t> order(items.size());
+  std::iota(order.begin(), order.end(), 0);
+  std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b) {
+    if (allNumbers)
+      return keys[a].asNumber() < keys[b].asNumber();
+    return keys[a].as<StringObj>()->text() < keys[b].as<StringObj>()->text();
+  });
+
+  std::vector<Value> sorted;
+  sorted.reserve(items.size());
+  for (size_t index : order)
+    sorted.push_back(items[index]);
+  c.result = Value(new ListObj(std::move(sorted)));
+  return true;
+}
+
+static bool flip(BuiltinCall &c) {
+  if (auto *list = c.args[0].as<ListObj>()) {
+    c.result = Value(new ListObj(std::vector<Value>(list->items.rbegin(), list->items.rend())));
+    return true;
+  }
+  auto *string = c.args[0].as<StringObj>();
+  if (!string)
+    return c.typeError(0, "a list or string");
+  std::string text;
+  text.reserve(string->text().size());
+  for (size_t i = string->length(); i > 0; --i)
+    text += string->text().slice(string->byteOffset(i - 1), string->byteOffset(i));
+  c.result = Value::string(std::move(text));
+  return true;
+}
+
+static Value makePair(Value first, Value second) {
+  return Value(new ListObj(std::vector<Value>{std::move(first), std::move(second)}));
+}
+
+static bool entries(BuiltinCall &c) {
+  MapObj *map;
+  if (!c.map(0, map))
+    return false;
+  std::vector<Value> out;
+  out.reserve(map->size());
+  for (const MapObj::Entry &entry : map->entries())
+    if (entry.live)
+      out.push_back(makePair(entry.key, entry.value));
+  c.result = Value(new ListObj(std::move(out)));
+  return true;
+}
+
+static bool vals(BuiltinCall &c) {
+  MapObj *map;
+  if (!c.map(0, map))
+    return false;
+  std::vector<Value> out;
+  out.reserve(map->size());
+  for (const MapObj::Entry &entry : map->entries())
+    if (entry.live)
+      out.push_back(entry.value);
+  c.result = Value(new ListObj(std::move(out)));
+  return true;
+}
+
+static bool numbered(BuiltinCall &c) {
+  ListObj *list;
+  if (!c.list(0, list))
+    return false;
+  std::vector<Value> out;
+  out.reserve(list->items.size());
+  for (size_t i = 0; i < list->items.size(); ++i)
+    out.push_back(makePair(Value::number(i), list->items[i]));
+  c.result = Value(new ListObj(std::move(out)));
+  return true;
+}
+
+static bool pairup(BuiltinCall &c) {
+  ListObj *a, *b;
+  if (!c.list(0, a) || !c.list(1, b))
+    return false;
+  size_t count = std::min(a->items.size(), b->items.size());
+  std::vector<Value> out;
+  out.reserve(count);
+  for (size_t i = 0; i < count; ++i)
+    out.push_back(makePair(a->items[i], b->items[i]));
+  c.result = Value(new ListObj(std::move(out)));
+  return true;
+}
+
+static bool memberof(BuiltinCall &c) {
+  auto *squad = c.args[1].as<ClassObj>();
+  if (!squad)
+    return c.typeError(1, "a squad");
+  auto *instance = c.args[0].as<InstanceObj>();
+  c.result = Value::boolean(instance && instance->classObj()->isOrCopies(squad));
+  return true;
+}
+
+// ---- Async, generators, and files -------------------------------------------
+
+static bool firstone(BuiltinCall &c) {
+  ListObj *list;
+  return c.list(0, list) && c.interp.awaitFirst(list, c.loc, c.result);
+}
+
+static bool nextup(BuiltinCall &c) {
+  auto *generator = c.args[0].as<GeneratorObj>();
+  if (!generator)
+    return c.typeError(0, "a generator");
+  bool done;
+  return c.interp.advanceGenerator(generator, c.loc, c.result, done);
+}
+
+static bool cooked(BuiltinCall &c) {
+  auto *generator = c.args[0].as<GeneratorObj>();
+  if (!generator)
+    return c.typeError(0, "a generator");
+  c.result = Value::boolean(generator->finished);
+  return true;
+}
+
+static bool groupchat(BuiltinCall &c) {
+  int64_t capacity = 0;
+  if (!c.args.empty()) {
+    if (!c.whole(0, capacity))
+      return false;
+    if (capacity < 1)
+      return c.error("a chat with no room? that's just a wall", "groupchat size must be at least 1");
+  }
+  c.result = Value(new ChannelObj(capacity));
+  return true;
+}
+
+static bool channelArg(BuiltinCall &c, ChannelObj *&out) {
+  out = c.args[0].as<ChannelObj>();
+  return out || c.typeError(0, "a groupchat");
+}
+
+static bool dm(BuiltinCall &c) {
+  ChannelObj *channel;
+  return channelArg(c, channel) && c.interp.channelSend(channel, c.args[1], c.loc);
+}
+
+static bool checkdms(BuiltinCall &c) {
+  ChannelObj *channel;
+  if (!channelArg(c, channel))
+    return false;
+  bool closed;
+  c.interp.channelReceive(channel, c.loc, c.result, closed);
+  return true;
+}
+
+static bool leavechat(BuiltinCall &c) {
+  ChannelObj *channel;
+  if (!channelArg(c, channel))
+    return false;
+  c.interp.channelClose(channel);
+  return true;
+}
+
+static bool readfile(BuiltinCall &c) {
+  StringObj *path;
+  if (!c.string(0, path))
+    return false;
+  std::string name = path->text().str(), contents, problem;
+  c.interp.scheduler().runBlocking([&] {
+    auto file = MemoryBuffer::getFile(name, /*IsText=*/false);
+    if (file)
+      contents = (*file)->getBuffer().str();
+    else
+      problem = file.getError().message();
+  });
+  if (!problem.empty())
+    return c.error("that file ghosted you", "can't read '" + name + "': " + problem);
+  c.result = Value::string(std::move(contents));
+  return true;
+}
+
+static bool writefile(BuiltinCall &c) {
+  StringObj *path, *text;
+  if (!c.string(0, path) || !c.string(1, text))
+    return false;
+  std::string name = path->text().str(), contents = text->text().str(), problem;
+  c.interp.scheduler().runBlocking([&] {
+    std::error_code error;
+    raw_fd_ostream stream(name, error);
+    if (error) {
+      problem = error.message();
+      return;
+    }
+    stream << contents;
+    stream.close();
+    if (stream.has_error()) {
+      problem = stream.error().message();
+      stream.clear_error();
+    }
+  });
+  if (!problem.empty())
+    return c.error("that file ghosted you", "can't write '" + name + "': " + problem);
   return true;
 }
 
@@ -380,6 +665,25 @@ static const BuiltinDef Builtins[] = {
     {"rng", 2, 2, rng},
     {"rn", 0, 0, rn},
     {"nap", 1, 1, nap},
+    {"remix", 2, 2, remix},
+    {"keep", 2, 2, keep},
+    {"boil", 3, 3, boil},
+    {"rank", 1, 2, rank},
+    {"flip", 1, 1, flip},
+    {"entries", 1, 1, entries},
+    {"vals", 1, 1, vals},
+    {"numbered", 1, 1, numbered},
+    {"pairup", 2, 2, pairup},
+    {"memberof", 2, 2, memberof},
+    {"firstone", 1, 1, firstone},
+    {"nextup", 1, 1, nextup},
+    {"cooked", 1, 1, cooked},
+    {"groupchat", 0, 1, groupchat},
+    {"dm", 2, 2, dm},
+    {"checkdms", 1, 1, checkdms},
+    {"leavechat", 1, 1, leavechat},
+    {"readfile", 1, 1, readfile},
+    {"writefile", 2, 2, writefile},
 };
 
 void installBuiltins(AstContext &ctx, Env &env) {

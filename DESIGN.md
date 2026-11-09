@@ -114,7 +114,7 @@ Only `cap` and `npc` are falsy. `0`, `""`, and `[]` are truthy.
 
 - A newline ends a statement. Semicolons are a syntax error, with a joke about it.
 - Newlines are ignored after a binary operator or comma, and inside `()`, `[]`, and map literals.
-- `nvm`, `nah`, and `caught4k` may sit on the same line as the closing `}` or on the next line.
+- `nvm`, `nah`, `caught4k`, and `regardless` may sit on the same line as the closing `}` or on the next line.
 - Blocks are always `{ }`. An empty block is valid.
 - A `#!` first line is ignored, so scripts can be executable.
 
@@ -435,13 +435,13 @@ Everything in this section is additive. New keywords: `squad`, `me`, `og`, `rizz
 
 | Syntax | Meaning |
 |---|---|
-| `cond ? a : b` | Ternary. Loosest of all operators. |
-| `x \|> f`, `x \|> f(y)` | Pipe, same as `f(x)` and `f(x, y)`. Looser than `??`. |
+| `cond ? a : b` | Ternary. Loosest of all operators, and right-associative. |
+| `x \|> f`, `x \|> f(y)` | Pipe, same as `f(x)` and `f(x, y)`. In `x \|> (g())`, parentheses make it call the result of `g()` with `x`. Looser than `??`. |
 | `a ?? b` | `b` only if `a` is `npc`. Short-circuits. Looser than `\|\|`. |
 | `a.b` | Field, method, map key, or module member. |
 | `a?.b` | `npc` if `a` is `npc`. Every `.x`, `[i]`, and `(...)` later in the same chain is also skipped when its left side is `npc`. |
 | `xs[-1]` | Negative indexes count from the end. |
-| `xs[1:3]`, `xs[:2]`, `xs[1:]`, `xs[:]` | Slice of a list or string. Always a copy, out-of-range bounds clamp. Not assignable. |
+| `xs[1:3]`, `xs[:2]`, `xs[1:]`, `xs[:]` | Slice of a list or string. The end is excluded, negative bounds count from the end, and out-of-range bounds clamp. Always a copy. Assigning to one is a syntax error. |
 | `x => x + 1`, `(a, b) => a + b`, `() => { ... }` | Arrow functions. A block body needs `itsgiving`. |
 | `[...xs, 1]`, `f(...xs)`, `{...m, "k": 1}` | Spread. Lists and calls take anything `speedrun` can walk. Map literals take maps. |
 | `[x * 2 speedrun x in xs vibecheck x > 1]` | List comprehension. One loop, optional filter, ranges allowed. |
@@ -556,7 +556,8 @@ yap holdup [sendit fetch(3, 1), sendit fetch(4, 1)]
 - `sendit f(x)` evaluates `f` and its arguments now, queues the call as a task, and returns the task. It starts when the current task next gives way. The operand must be a call, otherwise it's a syntax error.
 - `holdup task` waits and gives the result, or rethrows the task's error, preserving its original message and location.
 - `holdup [t1, t2]` waits for each in order and gives a list. Non-task values in the list, and `holdup` on a non-task value, pass through unchanged without waiting.
-- `firstone([t1, t2])` waits for whichever finishes first and gives its result, or rethrows its error.
+- `firstone([t1, t2])` waits for whichever finishes first and gives its result, or rethrows its error. The losers count as awaited.
+- `holdup` on a finished task, and `checkdms` on a chat with messages, don't give way.
 - The program ends once the main script and every task have finished. `touchgrass` from any task ends everything immediately. An uncaught error in the main script also ends everything immediately, with exit code 1.
 - A failed task that nothing ever awaited is reported when the program ends, and the exit code is 1.
 - If every task is waiting and nothing can wake any of them, the program reports `everyone's left on read (deadlock)` and exits with code 1. This can't be caught.

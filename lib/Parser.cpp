@@ -5,6 +5,7 @@
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/Path.h"
 
 #include <cmath>
 #include <string>
@@ -150,7 +151,23 @@ ArrayRef<const Stmt *> Parser::parseProgram() {
 }
 
 static bool declaresName(const Stmt *stmt) {
-  return stmt->kind == Stmt::Kind::Decl || stmt->kind == Stmt::Kind::Func;
+  switch (stmt->kind) {
+  case Stmt::Kind::Decl:
+  case Stmt::Kind::Func:
+  case Stmt::Kind::Squad:
+  case Stmt::Kind::Rizzup:
+    return true;
+  default:
+    return false;
+  }
+}
+
+void Parser::reportUnclosed(SMLoc open) {
+  // Nested blocks all fail at end of input, so name only the innermost one.
+  if (!reportedUnclosed_)
+    diag_.syntax(open, UnclosedHeadline, "this '{' never gets closed",
+                 /*atEnd=*/interpDepth_ == 0);
+  reportedUnclosed_ = true;
 }
 
 bool Parser::parseBlock(Block &out) {
@@ -176,11 +193,7 @@ bool Parser::parseBlock(Block &out) {
     if (accept(Tok::RBrace))
       break;
     if (at(Tok::EndOfFile)) {
-      // Nested blocks all fail here, so name only the innermost one.
-      if (!reportedUnclosed_)
-        diag_.syntax(open, UnclosedHeadline, "this '{' never gets closed",
-                     /*atEnd=*/interpDepth_ == 0);
-      reportedUnclosed_ = true;
+      reportUnclosed(open);
       return false;
     }
     if (const Stmt *stmt = parseStmt()) {
@@ -229,6 +242,17 @@ const Stmt *Parser::parseStmt() {
   case Tok::KwGhost:
   case Tok::KwSkibidi:
     return parseLoopControl();
+  case Tok::KwServe:
+    return parseServe();
+  case Tok::KwItdepends:
+    return parseMatch();
+  case Tok::KwSquad:
+    return parseSquad();
+  case Tok::KwRizzup:
+    return parseRizzup();
+  case Tok::KwRegardless:
+    errorAt(cur().loc, "'regardless' needs a tryna block right before it");
+    return nullptr;
   case Tok::KwNvm:
   case Tok::KwNah:
     errorAt(cur().loc, "'" + cur().text + "' needs a vibecheck right before it");
@@ -244,18 +268,20 @@ const Stmt *Parser::parseStmt() {
 const Stmt *Parser::parseDecl() {
   SMLoc loc = cur().loc;
   bool isConst = advance().kind == Tok::KwHighkey;
-  if (!at(Tok::Ident)) {
+  if (!at(Tok::Ident) && !at(Tok::LBracket) && !at(Tok::LBrace)) {
     errorExpected("a variable name");
     return nullptr;
   }
-  Symbol name = ctx_.intern(advance().text);
+  const Pattern *pattern = parsePatternPrimary();
+  if (!pattern)
+    return nullptr;
   if (!expect(Tok::Eq, "'=' and a starting value"))
     return nullptr;
   skipNewlines();
   const Expr *init = parseExpr();
   if (!init || !expectTerminator())
     return nullptr;
-  return ctx_.make<DeclStmt>(loc, name, isConst, init);
+  return ctx_.make<DeclStmt>(loc, pattern, isConst, init);
 }
 
 const Stmt *Parser::parsePrint() {
@@ -332,88 +358,124 @@ const Stmt *Parser::parseWhile() {
   return ctx_.make<WhileStmt>(loc, condition, body);
 }
 
+bool Parser::parseLoopHeader(LoopHeader &out) {
+  if (!at(Tok::Ident) && !at(Tok::LBracket) && !at(Tok::LBrace)) {
+    errorExpected("a loop variable name");
+    return false;
+  }
+  out.pattern = parsePatternPrimary();
+  if (!out.pattern || !expect(Tok::KwIn, "'in'"))
+    return false;
+  out.start = parseExpr();
+  if (!out.start)
+    return false;
+  if (accept(Tok::DotDot)) {
+    out.end = parseExpr();
+    if (!out.end)
+      return false;
+    if (accept(Tok::KwBy)) {
+      out.step = parseExpr();
+      if (!out.step)
+        return false;
+    }
+  }
+  return true;
+}
+
 const Stmt *Parser::parseFor() {
   SMLoc loc = cur().loc;
   advance();
-  if (!at(Tok::Ident)) {
-    errorExpected("a loop variable name");
+  LoopHeader header;
+  if (!parseLoopHeader(header))
     return nullptr;
-  }
-  Symbol var = ctx_.intern(advance().text);
-  if (!expect(Tok::KwIn, "'in'"))
-    return nullptr;
-
-  const Expr *first = parseExpr();
-  if (!first)
-    return nullptr;
-
-  const Expr *end = nullptr;
-  const Expr *step = nullptr;
-  if (accept(Tok::DotDot)) {
-    end = parseExpr();
-    if (!end)
-      return nullptr;
-    if (accept(Tok::KwBy)) {
-      step = parseExpr();
-      if (!step)
-        return nullptr;
-    }
-  }
-
   Block body;
   ++loopDepth_;
   bool ok = parseBlock(body);
   --loopDepth_;
   if (!ok)
     return nullptr;
-
-  if (end)
-    return ctx_.make<ForRangeStmt>(loc, var, first, end, step, body);
-  return ctx_.make<ForEachStmt>(loc, var, first, body);
+  return ctx_.make<ForStmt>(loc, header, body);
 }
 
-const FunctionDecl *Parser::parseFunctionRest(Symbol name) {
+bool Parser::parseParams(SmallVectorImpl<Param> &out) {
   if (!expect(Tok::LParen, "'(' and a parameter list"))
-    return nullptr;
+    return false;
 
-  SmallVector<Symbol, 4> params;
   DenseSet<Symbol> seen;
+  bool sawDefault = false;
   skipNewlines();
-  if (!at(Tok::RParen)) {
-    do {
-      skipNewlines();
-      if (!at(Tok::Ident)) {
-        errorExpected("a parameter name");
-        return nullptr;
-      }
-      const Token &param = advance();
-      Symbol symbol = ctx_.intern(param.text);
-      if (!seen.insert(symbol).second)
-        diag_.syntax(param.loc, "two params with the same name? pick one bestie",
-                     "parameter '" + param.text + "' is listed twice");
-      params.push_back(symbol);
-      skipNewlines();
-    } while (accept(Tok::Comma));
-  }
-  if (!expect(Tok::RParen, "')' to close the parameter list"))
-    return nullptr;
+  while (!at(Tok::RParen)) {
+    bool isRest = accept(Tok::DotDotDot);
+    if (!at(Tok::Ident)) {
+      errorExpected("a parameter name");
+      return false;
+    }
+    const Token &param = advance();
+    Symbol symbol = ctx_.intern(param.text);
+    if (!seen.insert(symbol).second)
+      diag_.syntax(param.loc, "two params with the same name? pick one bestie",
+                   "parameter '" + param.text + "' is listed twice");
 
+    const Expr *defaultValue = nullptr;
+    if (!isRest && accept(Tok::Eq)) {
+      defaultValue = parseExpr();
+      if (!defaultValue)
+        return false;
+      sawDefault = true;
+    } else if (!isRest && sawDefault) {
+      errorAt(param.loc, "required parameters must come before ones with defaults");
+    }
+    out.push_back({symbol, defaultValue, isRest});
+    skipNewlines();
+    if (isRest) {
+      if (!at(Tok::RParen)) {
+        errorAt(cur().loc, "a ...rest parameter must be the last one");
+        return false;
+      }
+      break;
+    }
+    if (!accept(Tok::Comma))
+      break;
+    skipNewlines();
+  }
+  return expect(Tok::RParen, "')' to close the parameter list");
+}
+
+const FunctionDecl *Parser::buildFunction(Symbol name, ArrayRef<Param> params,
+                                          function_ref<bool(Block &)> parseBody) {
   // `ghost` and `skibidi` can't reach a loop outside the function.
   int savedLoopDepth = loopDepth_;
+  bool savedSawServe = sawServe_;
   loopDepth_ = 0;
+  sawServe_ = false;
   ++functionDepth_;
   Block body;
-  bool ok = parseBlock(body);
+  bool ok = parseBody(body);
   --functionDepth_;
+  bool isGenerator = sawServe_;
+  sawServe_ = savedSawServe;
   loopDepth_ = savedLoopDepth;
   if (!ok)
     return nullptr;
 
   auto *decl = ctx_.make<FunctionDecl>();
   decl->name = name;
-  decl->params = ctx_.copy(params);
   decl->body = body;
+  decl->isGenerator = isGenerator;
+  for (const Param &param : params) {
+    decl->hasRest |= param.isRest;
+    decl->requiredParams += !param.isRest && !param.defaultValue;
+  }
+  SmallVector<Param, 4> copied(params.begin(), params.end());
+  decl->params = ctx_.copy(copied);
   return decl;
+}
+
+const FunctionDecl *Parser::parseFunctionRest(Symbol name) {
+  SmallVector<Param, 4> params;
+  if (!parseParams(params))
+    return nullptr;
+  return buildFunction(name, params, [&](Block &body) { return parseBlock(body); });
 }
 
 const Stmt *Parser::parseFuncStmt() {
@@ -458,18 +520,332 @@ const Stmt *Parser::parseTry() {
   Block body;
   if (!parseBlock(body))
     return nullptr;
+
+  size_t saved = pos_;
   skipNewlines();
-  if (!expect(Tok::KwCaught4k, "'caught4k' after the tryna block"))
-    return nullptr;
-  if (!at(Tok::Ident)) {
-    errorExpected("a name for the error");
+  Symbol errorName = nullptr;
+  Block handler;
+  if (accept(Tok::KwCaught4k)) {
+    if (!at(Tok::Ident)) {
+      errorExpected("a name for the error");
+      return nullptr;
+    }
+    errorName = ctx_.intern(advance().text);
+    if (!parseBlock(handler))
+      return nullptr;
+    saved = pos_;
+    skipNewlines();
+  }
+
+  const Block *finallyBody = nullptr;
+  if (accept(Tok::KwRegardless)) {
+    Block block;
+    if (!parseBlock(block))
+      return nullptr;
+    finallyBody = ctx_.make<Block>(block);
+  } else if (errorName) {
+    pos_ = saved; // Those newlines belong to whatever comes next.
+  } else {
+    errorExpected("'caught4k' or 'regardless' after the tryna block");
     return nullptr;
   }
-  Symbol errorName = ctx_.intern(advance().text);
-  Block handler;
-  if (!parseBlock(handler))
+  return ctx_.make<TryStmt>(loc, body, errorName, handler, finallyBody);
+}
+
+const Stmt *Parser::parseServe() {
+  SMLoc loc = cur().loc;
+  advance();
+  if (functionDepth_ == 0)
+    diag_.syntax(loc, "serving who? you're not in a cook",
+                 "'serve' can only be used inside a function");
+  sawServe_ = true;
+  const Expr *value = nullptr;
+  if (!atTerminator()) {
+    value = parseExpr();
+    if (!value)
+      return nullptr;
+  }
+  if (!expectTerminator())
     return nullptr;
-  return ctx_.make<TryStmt>(loc, body, errorName, handler);
+  return ctx_.make<ServeStmt>(loc, value);
+}
+
+const Stmt *Parser::parseMatch() {
+  SMLoc loc = cur().loc;
+  advance();
+  const Expr *subject = parseExpr();
+  if (!subject)
+    return nullptr;
+  if (!at(Tok::LBrace)) {
+    errorExpected("a '{' to start the arms");
+    return nullptr;
+  }
+  NestingGuard guard(*this);
+  if (!guard.ok)
+    return nullptr;
+  SMLoc open = cur().loc;
+  advance();
+
+  SmallVector<MatchArm, 8> arms;
+  const Block *elseBody = nullptr;
+  for (;;) {
+    skipNewlines();
+    if (accept(Tok::RBrace))
+      break;
+    if (at(Tok::EndOfFile)) {
+      reportUnclosed(open);
+      return nullptr;
+    }
+    stmtStart_ = pos_;
+    if (accept(Tok::KwNah)) {
+      Block body;
+      if (!parseBlock(body)) {
+        synchronize();
+        continue;
+      }
+      elseBody = ctx_.make<Block>(body);
+      continue;
+    }
+    if (!atWord("on")) {
+      errorExpected("'on' or 'nah'");
+      synchronize();
+      continue;
+    }
+    advance();
+    MatchArm arm;
+    arm.guard = nullptr;
+    arm.pattern = parsePattern();
+    bool ok = arm.pattern != nullptr;
+    if (ok && atWord("when")) {
+      advance();
+      arm.guard = parseExpr();
+      ok = arm.guard != nullptr;
+    }
+    if (ok)
+      ok = parseBlock(arm.body);
+    if (ok)
+      arms.push_back(arm);
+    else
+      synchronize();
+  }
+  return ctx_.make<MatchStmt>(loc, subject, ctx_.copy(arms), elseBody);
+}
+
+const Stmt *Parser::parseSquad() {
+  SMLoc loc = cur().loc;
+  advance();
+  if (!at(Tok::Ident)) {
+    errorExpected("a name for the squad");
+    return nullptr;
+  }
+  Symbol name = ctx_.intern(advance().text);
+
+  const Expr *parent = nullptr;
+  if (atWord("copies")) {
+    advance();
+    parent = parsePostfix();
+    if (!parent)
+      return nullptr;
+  }
+
+  if (!at(Tok::LBrace)) {
+    errorExpected("a '{' to start the squad");
+    return nullptr;
+  }
+  NestingGuard guard(*this);
+  if (!guard.ok)
+    return nullptr;
+  SMLoc open = cur().loc;
+  advance();
+
+  ++squadDepth_;
+  SmallVector<const FunctionDecl *, 8> methods;
+  bool closed = false;
+  for (;;) {
+    skipNewlines();
+    if (accept(Tok::RBrace)) {
+      closed = true;
+      break;
+    }
+    if (at(Tok::EndOfFile)) {
+      reportUnclosed(open);
+      break;
+    }
+    stmtStart_ = pos_;
+    if (!at(Tok::KwCook) || peek(1).kind != Tok::Ident) {
+      errorAt(cur().loc, "a squad body can only contain cook methods");
+      synchronize();
+      continue;
+    }
+    advance();
+    Symbol methodName = ctx_.intern(advance().text);
+    if (const FunctionDecl *decl = parseFunctionRest(methodName))
+      methods.push_back(decl);
+    else
+      synchronize();
+  }
+  --squadDepth_;
+  if (!closed)
+    return nullptr;
+  return ctx_.make<SquadStmt>(loc, name, parent, ctx_.copy(methods));
+}
+
+const Stmt *Parser::parseRizzup() {
+  SMLoc loc = cur().loc;
+  advance();
+  if (!at(Tok::String)) {
+    errorExpected("a file path in quotes");
+    return nullptr;
+  }
+  const Token &pathToken = advance();
+  StringRef path = pathToken.text;
+
+  StringRef aliasName;
+  if (atWord("as")) {
+    advance();
+    if (!at(Tok::Ident)) {
+      errorExpected("a name after 'as'");
+      return nullptr;
+    }
+    aliasName = advance().text;
+  } else {
+    aliasName = sys::path::stem(path);
+    if (!Lexer::isValidName(aliasName)) {
+      errorAt(pathToken.loc, "'" + aliasName + "' isn't a valid name, add 'as' and pick one");
+      return nullptr;
+    }
+  }
+  if (!expectTerminator())
+    return nullptr;
+  return ctx_.make<RizzupStmt>(loc, ctx_.save(path), ctx_.intern(aliasName));
+}
+
+// ---- Patterns ---------------------------------------------------------------
+
+const Pattern *Parser::parsePattern() {
+  SMLoc loc = cur().loc;
+  const Pattern *first = parsePatternPrimary();
+  if (!first || !at(Tok::Bar))
+    return first;
+
+  SmallVector<const Pattern *, 4> alternatives{first};
+  while (accept(Tok::Bar)) {
+    skipNewlines();
+    const Pattern *next = parsePatternPrimary();
+    if (!next)
+      return nullptr;
+    alternatives.push_back(next);
+  }
+  auto *pattern = ctx_.make<Pattern>(Pattern::Kind::Or, loc);
+  pattern->items = ctx_.copy(alternatives);
+  return pattern;
+}
+
+const Pattern *Parser::parsePatternPrimary() {
+  NestingGuard guard(*this);
+  if (!guard.ok)
+    return nullptr;
+
+  SMLoc loc = cur().loc;
+  switch (cur().kind) {
+  case Tok::Ident: {
+    StringRef text = advance().text;
+    if (text == "_")
+      return ctx_.make<Pattern>(Pattern::Kind::Wildcard, loc);
+    auto *pattern = ctx_.make<Pattern>(Pattern::Kind::Bind, loc);
+    pattern->name = ctx_.intern(text);
+    return pattern;
+  }
+  case Tok::LBracket:
+    return parseListPattern();
+  case Tok::LBrace:
+    return parseMapPattern();
+  case Tok::Number:
+  case Tok::String:
+  case Tok::KwNocap:
+  case Tok::KwCap:
+  case Tok::KwNpc:
+  case Tok::Minus: {
+    const Expr *low = parseUnary();
+    if (!low)
+      return nullptr;
+    if (!accept(Tok::DotDot)) {
+      auto *pattern = ctx_.make<Pattern>(Pattern::Kind::Literal, loc);
+      pattern->low = low;
+      return pattern;
+    }
+    const Expr *high = parseUnary();
+    if (!high)
+      return nullptr;
+    auto *pattern = ctx_.make<Pattern>(Pattern::Kind::Range, loc);
+    pattern->low = low;
+    pattern->high = high;
+    return pattern;
+  }
+  default:
+    errorExpected("a pattern");
+    return nullptr;
+  }
+}
+
+const Pattern *Parser::parseListPattern() {
+  auto *pattern = ctx_.make<Pattern>(Pattern::Kind::List, cur().loc);
+  advance();
+  SmallVector<const Pattern *, 4> items;
+  skipNewlines();
+  while (!at(Tok::RBracket)) {
+    if (accept(Tok::DotDotDot)) {
+      if (!at(Tok::Ident)) {
+        errorExpected("a name after '...'");
+        return nullptr;
+      }
+      pattern->rest = parsePatternPrimary();
+      if (!pattern->rest)
+        return nullptr;
+      skipNewlines();
+      break;
+    }
+    const Pattern *item = parsePattern();
+    if (!item)
+      return nullptr;
+    items.push_back(item);
+    skipNewlines();
+    if (!accept(Tok::Comma))
+      break;
+    skipNewlines();
+  }
+  if (!expect(Tok::RBracket, "']' or ','"))
+    return nullptr;
+  pattern->items = ctx_.copy(items);
+  return pattern;
+}
+
+const Pattern *Parser::parseMapPattern() {
+  auto *pattern = ctx_.make<Pattern>(Pattern::Kind::Map, cur().loc);
+  advance();
+  SmallVector<MapPatternEntry, 4> entries;
+  skipNewlines();
+  while (!at(Tok::RBrace)) {
+    const Expr *key = parseUnary();
+    if (!key)
+      return nullptr;
+    skipNewlines();
+    if (!expect(Tok::Colon, "':' after the key"))
+      return nullptr;
+    skipNewlines();
+    const Pattern *value = parsePattern();
+    if (!value)
+      return nullptr;
+    entries.push_back({key, value});
+    skipNewlines();
+    if (!accept(Tok::Comma))
+      break;
+    skipNewlines();
+  }
+  if (!expect(Tok::RBrace, "'}' or ','"))
+    return nullptr;
+  pattern->entries = ctx_.copy(entries);
+  return pattern;
 }
 
 const Stmt *Parser::parseAssert() {
@@ -546,7 +922,12 @@ const Stmt *Parser::parseExprOrAssign() {
     return ctx_.make<ExprStmt>(loc, expr);
   }
 
-  if (!isa<IdentExpr>(expr) && !isa<IndexExpr>(expr)) {
+  const auto *ident = dyn_cast<IdentExpr>(expr);
+  const auto *index = dyn_cast<IndexExpr>(expr);
+  const auto *member = dyn_cast<MemberExpr>(expr);
+  bool assignable = (ident && ident->name->text != "me") || (index && !index->optional) ||
+                    (member && !member->optional);
+  if (!assignable) {
     errorAt(cur().loc, "you can only assign to a variable or an item like a[0]");
     return nullptr;
   }
@@ -564,30 +945,50 @@ const Expr *Parser::parseExpr() {
   NestingGuard guard(*this);
   if (!guard.ok)
     return nullptr;
-  return parseBinary(1);
+  const Expr *condition = parseBinary(1);
+  if (!condition || !at(Tok::Question))
+    return condition;
+
+  SMLoc loc = cur().loc;
+  advance();
+  skipNewlines();
+  const Expr *thenValue = parseExpr();
+  if (!thenValue)
+    return nullptr;
+  skipNewlines();
+  if (!expect(Tok::Colon, "':' and the other value of the ternary"))
+    return nullptr;
+  skipNewlines();
+  const Expr *elseValue = parseExpr();
+  if (!elseValue)
+    return nullptr;
+  return ctx_.make<TernaryExpr>(loc, condition, thenValue, elseValue);
 }
 
 struct BinaryInfo {
   BinaryOp op;
   int precedence;
+  bool isPipe = false;
 };
 
 static std::optional<BinaryInfo> binaryInfo(Tok kind) {
   switch (kind) {
-  case Tok::OrOr: return BinaryInfo{BinaryOp::Or, 1};
-  case Tok::AndAnd: return BinaryInfo{BinaryOp::And, 2};
-  case Tok::EqEq: return BinaryInfo{BinaryOp::Eq, 3};
-  case Tok::BangEq: return BinaryInfo{BinaryOp::Ne, 3};
-  case Tok::Lt: return BinaryInfo{BinaryOp::Lt, 4};
-  case Tok::LtEq: return BinaryInfo{BinaryOp::Le, 4};
-  case Tok::Gt: return BinaryInfo{BinaryOp::Gt, 4};
-  case Tok::GtEq: return BinaryInfo{BinaryOp::Ge, 4};
-  case Tok::Plus: return BinaryInfo{BinaryOp::Add, 5};
-  case Tok::Minus: return BinaryInfo{BinaryOp::Sub, 5};
-  case Tok::Star: return BinaryInfo{BinaryOp::Mul, 6};
-  case Tok::Slash: return BinaryInfo{BinaryOp::Div, 6};
+  case Tok::PipeArrow: return BinaryInfo{BinaryOp::Add, 1, /*isPipe=*/true};
+  case Tok::QuestionQuestion: return BinaryInfo{BinaryOp::Nullish, 2};
+  case Tok::OrOr: return BinaryInfo{BinaryOp::Or, 3};
+  case Tok::AndAnd: return BinaryInfo{BinaryOp::And, 4};
+  case Tok::EqEq: return BinaryInfo{BinaryOp::Eq, 5};
+  case Tok::BangEq: return BinaryInfo{BinaryOp::Ne, 5};
+  case Tok::Lt: return BinaryInfo{BinaryOp::Lt, 6};
+  case Tok::LtEq: return BinaryInfo{BinaryOp::Le, 6};
+  case Tok::Gt: return BinaryInfo{BinaryOp::Gt, 6};
+  case Tok::GtEq: return BinaryInfo{BinaryOp::Ge, 6};
+  case Tok::Plus: return BinaryInfo{BinaryOp::Add, 7};
+  case Tok::Minus: return BinaryInfo{BinaryOp::Sub, 7};
+  case Tok::Star: return BinaryInfo{BinaryOp::Mul, 8};
+  case Tok::Slash: return BinaryInfo{BinaryOp::Div, 8};
   case Tok::Percent:
-  case Tok::KwRatio: return BinaryInfo{BinaryOp::Mod, 6};
+  case Tok::KwRatio: return BinaryInfo{BinaryOp::Mod, 8};
   default: return std::nullopt;
   }
 }
@@ -604,12 +1005,42 @@ const Expr *Parser::parseBinary(int minPrecedence) {
     const Expr *rhs = parseBinary(info->precedence + 1);
     if (!rhs)
       return nullptr;
+    if (info->isPipe) {
+      // `x |> f(y)` is exactly `f(x, y)`, and `x |> f` is `f(x)`.
+      SmallVector<const Expr *, 4> args{lhs};
+      const Expr *callee = rhs;
+      const auto *call = dyn_cast<CallExpr>(rhs);
+      if (call && rhs != lastParenthesized_) {
+        args.append(call->args.begin(), call->args.end());
+        callee = call->callee;
+      }
+      lhs = ctx_.make<CallExpr>(loc, callee, ctx_.copy(args));
+      continue;
+    }
     lhs = ctx_.make<BinaryExpr>(loc, info->op, lhs, rhs);
   }
   return lhs;
 }
 
 const Expr *Parser::parseUnary() {
+  if (at(Tok::KwHoldup) || at(Tok::KwSendit)) {
+    NestingGuard guard(*this);
+    if (!guard.ok)
+      return nullptr;
+    SMLoc loc = cur().loc;
+    bool isSpawn = advance().kind == Tok::KwSendit;
+    const Expr *operand = parseUnary();
+    if (!operand)
+      return nullptr;
+    if (!isSpawn)
+      return ctx_.make<AwaitExpr>(loc, operand);
+    const auto *call = dyn_cast<CallExpr>(operand);
+    if (!call) {
+      errorAt(loc, "'sendit' needs a function call, like sendit f()");
+      return nullptr;
+    }
+    return ctx_.make<SpawnExpr>(loc, call);
+  }
   if (at(Tok::Minus) || at(Tok::Bang) || at(Tok::KwSus)) {
     NestingGuard guard(*this);
     if (!guard.ok)
@@ -643,7 +1074,7 @@ const Expr *Parser::parsePower() {
 bool Parser::parseArgs(Tok closer, SmallVectorImpl<const Expr *> &out) {
   skipNewlines();
   while (!at(closer)) {
-    const Expr *arg = parseExpr();
+    const Expr *arg = parseSpreadOrExpr();
     if (!arg)
       return false;
     out.push_back(arg);
@@ -655,24 +1086,65 @@ bool Parser::parseArgs(Tok closer, SmallVectorImpl<const Expr *> &out) {
   return expect(closer, closer == Tok::RParen ? "')' or ','" : "']' or ','");
 }
 
+const Expr *Parser::parseSpreadOrExpr() {
+  if (!at(Tok::DotDotDot))
+    return parseExpr();
+  SMLoc loc = cur().loc;
+  advance();
+  const Expr *inner = parseExpr();
+  if (!inner)
+    return nullptr;
+  return ctx_.make<SpreadExpr>(loc, inner);
+}
+
+const Expr *Parser::parseIndexOrSlice(const Expr *object, SMLoc loc, bool optional) {
+  skipNewlines();
+  const Expr *start = nullptr;
+  if (!at(Tok::Colon)) {
+    start = parseExpr();
+    if (!start)
+      return nullptr;
+    skipNewlines();
+  }
+  if (!accept(Tok::Colon)) {
+    if (!expect(Tok::RBracket, "']'"))
+      return nullptr;
+    return ctx_.make<IndexExpr>(loc, object, start, optional);
+  }
+  skipNewlines();
+  const Expr *end = nullptr;
+  if (!at(Tok::RBracket)) {
+    end = parseExpr();
+    if (!end)
+      return nullptr;
+    skipNewlines();
+  }
+  if (!expect(Tok::RBracket, "']'"))
+    return nullptr;
+  return ctx_.make<SliceExpr>(loc, object, start, end, optional);
+}
+
 const Expr *Parser::parsePostfix() {
   const Expr *expr = parsePrimary();
+  // Once a chain has seen `?.`, every later step also tolerates npc.
+  bool optional = false;
   while (expr) {
     SMLoc loc = cur().loc;
     if (accept(Tok::LParen)) {
       SmallVector<const Expr *, 4> args;
       if (!parseArgs(Tok::RParen, args))
         return nullptr;
-      expr = ctx_.make<CallExpr>(expr->loc, expr, ctx_.copy(args));
+      expr = ctx_.make<CallExpr>(expr->loc, expr, ctx_.copy(args), optional);
     } else if (accept(Tok::LBracket)) {
-      skipNewlines();
-      const Expr *index = parseExpr();
-      if (!index)
+      expr = parseIndexOrSlice(expr, loc, optional);
+    } else if (at(Tok::Dot) || at(Tok::QuestionDot)) {
+      optional |= advance().kind == Tok::QuestionDot;
+      if (!at(Tok::Ident)) {
+        errorExpected("a field name");
         return nullptr;
-      skipNewlines();
-      if (!expect(Tok::RBracket, "']'"))
-        return nullptr;
-      expr = ctx_.make<IndexExpr>(loc, expr, index);
+      }
+      Symbol name = ctx_.intern(advance().text);
+      expr = ctx_.make<MemberExpr>(loc, expr, name, optional);
     } else {
       break;
     }
@@ -704,9 +1176,32 @@ const Expr *Parser::parsePrimary() {
     advance();
     return ctx_.make<NpcExpr>(token.loc);
   case Tok::Ident:
+    if (peek(1).kind == Tok::Arrow)
+      return parseArrow();
     advance();
     return ctx_.make<IdentExpr>(token.loc, ctx_.intern(token.text));
+  case Tok::KwMe:
+    advance();
+    if (squadDepth_ == 0)
+      diag_.syntax(token.loc, "who's me? you're not in a squad",
+                   "'me' can only be used inside a squad method");
+    return ctx_.make<IdentExpr>(token.loc, ctx_.intern("me"));
+  case Tok::KwOg: {
+    advance();
+    if (squadDepth_ == 0)
+      diag_.syntax(token.loc, "og who? you're not in a squad",
+                   "'og' can only be used inside a squad method");
+    if (!expect(Tok::Dot, "'.' and a method name"))
+      return nullptr;
+    if (!at(Tok::Ident)) {
+      errorExpected("a method name");
+      return nullptr;
+    }
+    return ctx_.make<OgMemberExpr>(token.loc, ctx_.intern(advance().text));
+  }
   case Tok::LParen: {
+    if (arrowAhead())
+      return parseArrow();
     advance();
     skipNewlines();
     const Expr *inner = parseExpr();
@@ -715,6 +1210,7 @@ const Expr *Parser::parsePrimary() {
     skipNewlines();
     if (!expect(Tok::RParen, "')'"))
       return nullptr;
+    lastParenthesized_ = inner;
     return inner;
   }
   case Tok::LBracket:
@@ -723,9 +1219,6 @@ const Expr *Parser::parsePrimary() {
     return parseMap();
   case Tok::KwCook:
     return parseLambda();
-  case Tok::KwReserved:
-    errorAt(token.loc, "'" + token.text + "' is reserved for a future version");
-    return nullptr;
   default:
     errorExpected("an expression");
     return nullptr;
@@ -736,6 +1229,37 @@ const Expr *Parser::parseList() {
   SMLoc loc = cur().loc;
   advance();
   SmallVector<const Expr *, 8> items;
+  skipNewlines();
+  if (!at(Tok::RBracket)) {
+    const Expr *first = parseSpreadOrExpr();
+    if (!first)
+      return nullptr;
+    skipNewlines();
+
+    if (accept(Tok::KwSpeedrun)) {
+      LoopHeader header;
+      if (!parseLoopHeader(header))
+        return nullptr;
+      skipNewlines();
+      const Expr *filter = nullptr;
+      if (accept(Tok::KwVibecheck)) {
+        filter = parseExpr();
+        if (!filter)
+          return nullptr;
+        skipNewlines();
+      }
+      if (!expect(Tok::RBracket, "']' to end the comprehension"))
+        return nullptr;
+      return ctx_.make<ListCompExpr>(loc, first, header, filter);
+    }
+
+    items.push_back(first);
+    if (!accept(Tok::Comma)) {
+      if (!expect(Tok::RBracket, "']' or ','"))
+        return nullptr;
+      return ctx_.make<ListExpr>(loc, ctx_.copy(items));
+    }
+  }
   if (!parseArgs(Tok::RBracket, items))
     return nullptr;
   return ctx_.make<ListExpr>(loc, ctx_.copy(items));
@@ -747,6 +1271,17 @@ const Expr *Parser::parseMap() {
   SmallVector<MapPair, 8> pairs;
   skipNewlines();
   while (!at(Tok::RBrace)) {
+    if (accept(Tok::DotDotDot)) {
+      const Expr *spread = parseExpr();
+      if (!spread)
+        return nullptr;
+      pairs.push_back({nullptr, spread});
+      skipNewlines();
+      if (!accept(Tok::Comma))
+        break;
+      skipNewlines();
+      continue;
+    }
     const Expr *key = parseExpr();
     if (!key)
       return nullptr;
@@ -772,6 +1307,48 @@ const Expr *Parser::parseLambda() {
   SMLoc loc = cur().loc;
   advance();
   const FunctionDecl *decl = parseFunctionRest(nullptr);
+  if (!decl)
+    return nullptr;
+  return ctx_.make<LambdaExpr>(loc, decl);
+}
+
+bool Parser::arrowAhead() const {
+  int depth = 0;
+  for (size_t i = pos_; i < tokens_.size(); ++i) {
+    if (tokens_[i].kind == Tok::LParen) {
+      ++depth;
+    } else if (tokens_[i].kind == Tok::RParen && --depth == 0) {
+      return i + 1 < tokens_.size() && tokens_[i + 1].kind == Tok::Arrow;
+    } else if (tokens_[i].kind == Tok::EndOfFile) {
+      return false;
+    }
+  }
+  return false;
+}
+
+const Expr *Parser::parseArrow() {
+  SMLoc loc = cur().loc;
+  SmallVector<Param, 4> params;
+  if (at(Tok::Ident)) {
+    params.push_back({ctx_.intern(advance().text), nullptr, false});
+  } else if (!parseParams(params)) {
+    return nullptr;
+  }
+  if (!expect(Tok::Arrow, "'=>'"))
+    return nullptr;
+  skipNewlines();
+
+  const FunctionDecl *decl = buildFunction(nullptr, params, [&](Block &body) {
+    if (at(Tok::LBrace))
+      return parseBlock(body);
+    SMLoc valueLoc = cur().loc;
+    const Expr *value = parseExpr();
+    if (!value)
+      return false;
+    SmallVector<const Stmt *, 1> stmts{ctx_.make<ReturnStmt>(valueLoc, value)};
+    body.stmts = ctx_.copy(stmts);
+    return true;
+  });
   if (!decl)
     return nullptr;
   return ctx_.make<LambdaExpr>(loc, decl);
