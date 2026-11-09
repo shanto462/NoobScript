@@ -1,0 +1,12 @@
+btw EXIT: 5
+btw NOERR:
+btw touchgrass from a task ends everything at once, even queued tasks and main.
+cook leaver() {
+    yap "bye"                            btw OUT: bye
+    touchgrass 5
+}
+cook never() { yap "queued after leaver, never runs" }
+sendit leaver()
+sendit never()
+nap(60)
+yap "main must not continue"

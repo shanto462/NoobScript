@@ -1,0 +1,9 @@
+btw EXIT: 1
+btw ERR: everyone's left on read (deadlock)
+btw The chat is never closed, so the walk can never end.
+lowkey c = groupchat()
+dm(c, 1)
+speedrun m in c {
+    yap m                                btw OUT: 1
+}
+yap "never"

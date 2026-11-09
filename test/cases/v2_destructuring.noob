@@ -1,0 +1,143 @@
+btw NOERR:
+btw Section 7 destructuring. AMBIG-n comments mark readings of unclear spec text.
+
+btw ---- lists
+lowkey [a, b, ...rest] = [1, 2, 3, 4]
+yap a, b, rest                           btw OUT: 1 2 [3, 4]
+lowkey [c, d] = [5, 6]
+yap c, d                                 btw OUT: 5 6
+lowkey [only, ...none] = [7]
+yap only, none                           btw OUT: 7 []
+lowkey [...everything] = [8, 9]
+yap everything                           btw OUT: [8, 9]
+lowkey [...emptyrest] = []
+yap emptyrest                            btw OUT: []
+lowkey [] = []
+lowkey src = [1, 2, 3]
+lowkey [hd, ...tl] = src
+slide(tl, 9)
+yap src, tl                              btw OUT: [1, 2, 3] [2, 3, 9]
+
+btw destructuring gives ordinary mutable bindings
+lowkey [mutme] = [1]
+mutme += 1
+yap mutme                                btw OUT: 2
+
+btw ---- nesting
+lowkey [[n1, n2], [n3]] = [[1, 2], [3]]
+yap n1, n2, n3                           btw OUT: 1 2 3
+lowkey {"p": [q, r], "s": {"t": u}} = {"p": [1, 2], "s": {"t": 3}}
+yap q, r, u                              btw OUT: 1 2 3
+lowkey [{"k": v0}, ...tail0] = [{"k": 1}, 2]
+yap v0, tail0                            btw OUT: 1 [2]
+
+btw ---- maps
+lowkey {"x": px, "y": py} = {"x": 1, "y": 2}
+yap px, py                               btw OUT: 1 2
+lowkey {"y": yy, "x": xx} = {"x": 1, "y": 2, "z": 3}
+yap xx, yy                               btw OUT: 1 2
+lowkey {"n": nv} = {"n": npc}
+yap nv                                   btw OUT: npc
+lowkey {} = {"anything": 1}
+
+btw ---- underscore binds nothing, so it can repeat
+lowkey [_, x2, _] = [1, 2, 3]
+yap x2                                   btw OUT: 2
+lowkey [_, _] = [1, 2]
+lowkey _ = 1
+lowkey _ = 2
+lowkey {"a": _} = {"a": 1}
+tryna { lowkey {"a": _} = {"b": 1} } caught4k e { yap "err" }    btw OUT: err
+
+btw ---- literal, range, and or patterns in declarations
+lowkey [1, lit] = [1, 9]
+yap lit                                  btw OUT: 9
+lowkey ["a", nocap, npc, lit2] = ["a", nocap, npc, 2]
+yap lit2                                 btw OUT: 2
+lowkey [1..3, rv] = [3, 4]
+yap rv                                   btw OUT: 4
+lowkey [1 | 2, orv] = [2, 3]
+yap orv                                  btw OUT: 3
+tryna { lowkey [2, z] = [1, 9] } caught4k e { yap "err" }        btw OUT: err
+tryna { lowkey [1..3, z] = [4, 9] } caught4k e { yap "err" }     btw OUT: err
+tryna { lowkey [1 | 2, z] = [3, 9] } caught4k e { yap "err" }    btw OUT: err
+tryna { lowkey [nocap] = [cap] } caught4k e { yap "err" }        btw OUT: err
+tryna { lowkey ["1"] = [1] } caught4k e { yap "err" }            btw OUT: err
+
+btw ---- highkey makes every binding constant
+highkey [ha, hb] = [1, 2]
+yap ha + hb                              btw OUT: 3
+tryna { ha = 5 } caught4k e { yap "err" }                        btw OUT: err
+highkey {"a": [h1]} = {"a": [1]}
+tryna { h1 = 5 } caught4k e { yap "err" }                        btw OUT: err
+yap ha, h1                               btw OUT: 1 1
+
+btw ---- misfits
+tryna { lowkey [p1, p2] = [1] } caught4k e { yap "err" }         btw OUT: err
+tryna { lowkey [p1] = [1, 2] } caught4k e { yap "err" }          btw OUT: err
+tryna { lowkey [p1, p2, ...pr] = [1] } caught4k e { yap "err" }  btw OUT: err
+tryna { lowkey [] = [1] } caught4k e { yap "err" }               btw OUT: err
+tryna { lowkey [p1] = "a" } caught4k e { yap "err" }             btw OUT: err
+tryna { lowkey [p1] = {"a": 1} } caught4k e { yap "err" }        btw OUT: err
+tryna { lowkey [p1] = npc } caught4k e { yap "err" }             btw OUT: err
+tryna { lowkey {"a": p1} = [1] } caught4k e { yap "err" }        btw OUT: err
+tryna { lowkey {"a": p1} = "a" } caught4k e { yap "err" }        btw OUT: err
+tryna { lowkey {"a": p1} = npc } caught4k e { yap "err" }        btw OUT: err
+tryna { lowkey {"a": p1} = {"b": 1} } caught4k e { yap "err" }   btw OUT: err
+tryna { lowkey [[p1]] = [1] } caught4k e { yap "err" }           btw OUT: err
+tryna { highkey [p1] = [] } caught4k e { yap "err" }             btw OUT: err
+
+btw ---- binding names follow the ordinary redeclare rule
+tryna {
+    lowkey [dupa] = [1]
+    lowkey dupa = 2
+    yap "no"
+} caught4k e {
+    yap "err"                            btw OUT: err
+}
+tryna {
+    lowkey dupb = 1
+    lowkey [dupb] = [2]
+    yap "no"
+} caught4k e {
+    yap "err"                            btw OUT: err
+}
+
+btw ---- speedrun
+lowkey out = []
+speedrun [k, v] in entries({"a": 1, "b": 2}) { slide(out, k + "=" + v) }
+yap out                                  btw OUT: ["a=1", "b=2"]
+lowkey out2 = []
+speedrun [i, x] in numbered(["p", "q"]) { slide(out2, i + x) }
+yap out2                                 btw OUT: ["0p", "1q"]
+lowkey out3 = []
+speedrun {"id": id} in [{"id": 1, "z": 0}, {"id": 2}] { slide(out3, id) }
+yap out3                                 btw OUT: [1, 2]
+lowkey out4 = []
+speedrun [h, ...t] in [[1], [2, 3]] { slide(out4, [h, t]) }
+yap out4                                 btw OUT: [[1, []], [2, [3]]]
+lowkey out5 = []
+speedrun [[a2, b2], c2] in [[[1, 2], 3]] { slide(out5, a2 + b2 + c2) }
+yap out5                                 btw OUT: [6]
+lowkey n0 = 0
+speedrun _ in 1..3 { n0 += 1 }
+yap n0                                   btw OUT: 3
+lowkey out6 = []
+speedrun [_, y] in [[1, 2], [3, 4]] { slide(out6, y) }
+yap out6                                 btw OUT: [2, 4]
+
+btw pattern names are fresh on each pass, like a plain loop variable
+lowkey loopfns = []
+speedrun [fi, fj] in [[1, 2], [3, 4]] { slide(loopfns, () => fi + fj) }
+yap loopfns[0](), loopfns[1]()           btw OUT: 3 7
+
+btw a misfit stops the loop with an error on the pass that doesn't fit
+lowkey out7 = []
+tryna {
+    speedrun [a3, b3] in [[1, 2], [3], [5, 6]] { slide(out7, a3) }
+} caught4k e {
+    yap "err"                            btw OUT: err
+}
+yap out7                                 btw OUT: [1]
+tryna { speedrun [a4] in 1..2 { yap a4 } } caught4k e { yap "err" }      btw OUT: err
+tryna { speedrun {"k": a5} in [{"j": 1}] { yap a5 } } caught4k e { yap "err" }    btw OUT: err

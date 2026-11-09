@@ -1,0 +1,7 @@
+btw EXIT: 1
+btw ERR: everyone's left on read (deadlock)
+btw Main has finished but a task can never be woken.
+lowkey c = groupchat()
+cook stuck() { checkdms(c) }
+sendit stuck()
+yap "main done"                          btw OUT: main done

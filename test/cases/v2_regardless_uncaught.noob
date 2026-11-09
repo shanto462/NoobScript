@@ -1,0 +1,8 @@
+btw EXIT: 1
+btw ERR: kaboom
+tryna {
+    yeet "kaboom"
+} regardless {
+    yap "regardless ran"                 btw OUT: regardless ran
+}
+yap "unreachable"

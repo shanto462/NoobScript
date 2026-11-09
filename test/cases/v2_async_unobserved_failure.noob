@@ -1,0 +1,10 @@
+btw EXIT: 1
+btw ERR: kaboom
+btw AMBIG-26: "reported" is taken to mean the report includes the error message.
+btw The other tasks still run first, the report and exit happen when the program ends.
+cook boom() { yeet "kaboom" }
+cook ok() { yap "ok ran" }
+lowkey t = sendit boom()
+sendit ok()
+yap "main done"                          btw OUT: main done
+btw OUT: ok ran

@@ -1,0 +1,11 @@
+btw EXIT: 1
+btw ERR: kaboom
+btw ERR: v2_async_rethrow_location.noob:6:5:
+btw holdup rethrows preserving the original location (line 6, the yeet).
+cook boom() {
+    yeet "kaboom"
+}
+lowkey t = sendit boom()
+yap "before"                             btw OUT: before
+holdup t
+yap "never"

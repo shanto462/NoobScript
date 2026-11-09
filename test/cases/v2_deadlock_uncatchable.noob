@@ -1,0 +1,10 @@
+btw EXIT: 1
+btw ERR: everyone's left on read (deadlock)
+btw Deadlock can't be caught, so neither the handler nor later code runs.
+lowkey c = groupchat()
+tryna {
+    checkdms(c)
+} caught4k e {
+    yap "caught?!"
+}
+yap "never"

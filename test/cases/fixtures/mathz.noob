@@ -1,0 +1,12 @@
+highkey PI = 3
+lowkey calls = 0
+cook add(a, b) { itsgiving a + b }
+cook bump() {
+    calls += 1
+    itsgiving calls
+}
+cook size(x) { itsgiving clout(x) }
+squad Thing {
+    cook glowup(v) { me.v = v }
+    cook get() { itsgiving me.v }
+}

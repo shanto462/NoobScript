@@ -1,0 +1,94 @@
+btw NOERR:
+btw Section 7 parameters. AMBIG-n comments mark readings of unclear spec text.
+
+cook boom() { yeet "boom ran" }
+
+btw ---- defaults
+cook pair(a, b = 2) { itsgiving [a, b] }
+yap pair(1)                              btw OUT: [1, 2]
+yap pair(1, 9)                           btw OUT: [1, 9]
+tryna { pair() } caught4k e { yap "err" }          btw OUT: err
+tryna { pair(1, 2, 3) } caught4k e { yap "err" }   btw OUT: err
+
+btw defaults see earlier parameters
+cook earlier(a, b = a + 1, c = a + b) { itsgiving [a, b, c] }
+yap earlier(1)                           btw OUT: [1, 2, 3]
+yap earlier(1, 5)                        btw OUT: [1, 5, 6]
+yap earlier(1, 5, 9)                     btw OUT: [1, 5, 9]
+cook onlyearlier(a = b, b = 1) { itsgiving a }
+tryna { onlyearlier() } caught4k e { yap "err" }   btw OUT: err
+yap onlyearlier(7)                       btw OUT: 7
+yap onlyearlier(7, 8)                    btw OUT: 7
+
+btw a default expression is a full expression and stops at the comma
+cook fancy(a, b = nocap ? 1 : 2, c = npc ?? 3) { itsgiving [a, b, c] }
+yap fancy(0)                             btw OUT: [0, 1, 3]
+cook closes(a, g = () => a) { itsgiving g() }
+yap closes(3)                            btw OUT: 3
+
+btw evaluated at each call, so a mutable default is fresh every time
+cook fresh(xs = []) {
+    slide(xs, 1)
+    itsgiving xs
+}
+yap fresh(), fresh()                     btw OUT: [1] [1]
+lowkey base = 1
+cook readbase(a = base) { itsgiving a }
+base = 2
+yap readbase()                           btw OUT: 2
+
+btw AMBIG-11: "evaluated at each call" read as: only when the argument is omitted
+lowkey calls = 0
+cook bump() {
+    calls += 1
+    itsgiving calls
+}
+cook counted(a = bump()) { itsgiving a }
+yap counted(), counted(), calls          btw OUT: 1 2 2
+yap counted(100), calls                  btw OUT: 100 2
+btw AMBIG-12: an explicit npc counts as passing the argument
+yap counted(npc), calls                  btw OUT: npc 2
+cook deferred(a = boom()) { itsgiving a }
+yap deferred(5)                          btw OUT: 5
+tryna { deferred() } caught4k e { yap e }    btw OUT: boom ran
+
+btw defaults also work on lambdas
+lowkey lam = cook(a, b = a * 2) { itsgiving a + b }
+yap lam(2), lam(2, 1)                    btw OUT: 6 3
+
+btw ---- rest
+cook resty(a, ...rest) { itsgiving [a, rest] }
+yap resty(1)                             btw OUT: [1, []]
+yap resty(1, 2, 3)                       btw OUT: [1, [2, 3]]
+tryna { resty() } caught4k e { yap "err" }         btw OUT: err
+cook allof(...xs) { itsgiving clout(xs) }
+yap allof()                              btw OUT: 0
+yap allof(1, 2)                          btw OUT: 2
+yap allof(...[1, 2, 3], 4)               btw OUT: 4
+
+cook mixed(a, b = 2, ...rest) { itsgiving [a, b, rest] }
+yap mixed(1)                             btw OUT: [1, 2, []]
+yap mixed(1, 5)                          btw OUT: [1, 5, []]
+yap mixed(1, 5, 6, 7)                    btw OUT: [1, 5, [6, 7]]
+yap mixed(...[1, 2, 3])                  btw OUT: [1, 2, [3]]
+yap mixed(1, npc, 3)                     btw OUT: [1, npc, [3]]
+tryna { mixed() } caught4k e { yap "err" }         btw OUT: err
+
+btw the rest list is new, it doesn't alias the spread source
+lowkey spreadsrc = [1, 2]
+cook grows(...r) {
+    slide(r, 9)
+    itsgiving r
+}
+yap grows(...spreadsrc), spreadsrc       btw OUT: [1, 2, 9] [1, 2]
+
+btw ---- arity errors elsewhere
+lowkey one = x => x
+tryna { one() } caught4k e { yap "err" }           btw OUT: err
+tryna { one(1, 2) } caught4k e { yap "err" }       btw OUT: err
+lowkey two = (a, b) => a
+tryna { two(1) } caught4k e { yap "err" }          btw OUT: err
+lowkey none = () => 1
+tryna { none(1) } caught4k e { yap "err" }         btw OUT: err
+tryna { lam() } caught4k e { yap "err" }           btw OUT: err
+tryna { lam(1, 2, 3) } caught4k e { yap "err" }    btw OUT: err

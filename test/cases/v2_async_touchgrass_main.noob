@@ -1,0 +1,6 @@
+btw EXIT: 4
+btw NOERR:
+btw touchgrass from the main script ends everything, queued tasks never run.
+cook never() { yap "never runs" }
+sendit never()
+touchgrass 4

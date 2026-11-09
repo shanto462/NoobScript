@@ -1,0 +1,5 @@
+btw EXIT: 2
+yap "this must not run"
+squad A {
+    yap "hello"
+}

@@ -1,0 +1,109 @@
+btw NOERR:
+btw Section 7 new built-ins. AMBIG-n comments mark readings of unclear spec text.
+
+btw ---- remix
+yap remix([1, 2, 3], x => x * 2)         btw OUT: [2, 4, 6]
+yap remix([], x => x)                    btw OUT: []
+lowkey rsrc = [1, 2]
+lowkey rres = remix(rsrc, x => x)
+yap rres == rsrc, rsrc                   btw OUT: cap [1, 2]
+yap remix(["a"], loud)                   btw OUT: ["A"]
+
+btw ---- keep
+yap keep([1, 2, 3, 4], x => x ratio 2 == 0)    btw OUT: [2, 4]
+yap keep([0, npc, cap, "", []], x => x)  btw OUT: [0, "", []]
+yap keep([1], x => npc)                  btw OUT: []
+yap keep([], x => x)                     btw OUT: []
+lowkey ksrc = [1, 2]
+lowkey kres = keep(ksrc, x => nocap)
+yap kres == ksrc, kres                   btw OUT: cap [1, 2]
+
+btw ---- boil
+yap boil([1, 2, 3], (a, x) => a + x, 0)  btw OUT: 6
+yap boil([1, 2, 3], (a, x) => a - x, 10) btw OUT: 4
+yap boil(["a", "b"], (acc, x) => acc + x, "z") btw OUT: zab
+yap boil([], (a, x) => a + x, "start")   btw OUT: start
+yap boil([1, 2], (a, x) => [x, a], npc)  btw OUT: [2, [1, npc]]
+
+btw ---- rank
+yap rank([3, 1, 2])                      btw OUT: [1, 2, 3]
+yap rank(["b", "a", "c"])                btw OUT: ["a", "b", "c"]
+yap rank([])                             btw OUT: []
+yap rank([2, 1, 2, 1])                   btw OUT: [1, 1, 2, 2]
+lowkey rkorig = [2, 1]
+lowkey rkres = rank(rkorig)
+yap rkorig, rkres, rkres == rkorig       btw OUT: [2, 1] [1, 2] cap
+lowkey sortedalready = [1, 2]
+yap rank(sortedalready) == sortedalready btw OUT: cap
+btw AMBIG-27: key is a function of the element, like the f in remix
+yap rank([1, 2, 3], x => -x)             btw OUT: [3, 2, 1]
+yap rank(["bb", "a", "ccc"], s => clout(s))    btw OUT: ["a", "bb", "ccc"]
+yap rank([3, 1], x => "k" + x)           btw OUT: [1, 3]
+lowkey recs = [{"k": 2, "id": "a"}, {"k": 1, "id": "b"}, {"k": 2, "id": "c"}, {"k": 1, "id": "d"}]
+yap remix(rank(recs, r => r.k), r => r.id)     btw OUT: ["b", "d", "a", "c"]
+yap remix(rank(recs, r => "same"), r => r.id)  btw OUT: ["a", "b", "c", "d"]
+tryna { rank([1, "a"]) } caught4k e { yap "err" }          btw OUT: err
+tryna { rank(["a", 1, "b"]) } caught4k e { yap "err" }     btw OUT: err
+tryna { rank([1, 2], x => x == 1 ? "a" : 1) } caught4k e { yap "err" }    btw OUT: err
+tryna { rank([1, npc]) } caught4k e { yap "err" }          btw OUT: err
+tryna { rank([nocap, cap]) } caught4k e { yap "err" }      btw OUT: err
+btw AMBIG-28: a single key that is neither number nor string is still invalid
+tryna { rank([[1]]) } caught4k e { yap "err" }             btw OUT: err
+
+btw ---- flip
+yap flip([1, 2, 3])                      btw OUT: [3, 2, 1]
+yap flip("a💀b")                         btw OUT: b💀a
+yap flip([]), clout(flip(""))            btw OUT: [] 0
+lowkey fsrc = [1, 2]
+lowkey fres = flip(fsrc)
+yap fsrc, fres == fsrc                   btw OUT: [1, 2] cap
+lowkey pal = [1]
+yap flip(pal) == pal                     btw OUT: cap
+
+btw ---- entries and vals
+yap entries({"a": 1, "b": [2]})          btw OUT: [["a", 1], ["b", [2]]]
+yap entries({})                          btw OUT: []
+yap vals({"a": 1, "b": 2})               btw OUT: [1, 2]
+yap vals({})                             btw OUT: []
+lowkey ordered = {"x": 1}
+ordered["y"] = 2
+unsend(ordered, "x")
+ordered["x"] = 3
+yap entries(ordered), vals(ordered)      btw OUT: [["y", 2], ["x", 3]] [2, 3]
+
+btw ---- numbered
+yap numbered(["a", "b"])                 btw OUT: [[0, "a"], [1, "b"]]
+yap numbered([])                         btw OUT: []
+
+btw ---- pairup
+yap pairup([1, 2, 3], ["a", "b"])        btw OUT: [[1, "a"], [2, "b"]]
+yap pairup(["a"], [1, 2])                btw OUT: [["a", 1]]
+yap pairup([1, 2], [3, 4])               btw OUT: [[1, 3], [2, 4]]
+yap pairup([], [1])                      btw OUT: []
+yap pairup([1], [])                      btw OUT: []
+
+btw ---- readfile and writefile
+highkey TMP = "/tmp/noob_golden_v2_builtins_roundtrip.txt"
+writefile(TMP, "hello\nworld 💀\n")
+yap readfile(TMP) == "hello\nworld 💀\n" btw OUT: nocap
+yap clout(readfile(TMP))                 btw OUT: 14
+writefile(TMP, "x")
+yap readfile(TMP)                        btw OUT: x
+writefile(TMP, "")
+yap clout(readfile(TMP))                 btw OUT: 0
+yap vibeof(readfile(TMP))                btw OUT: string
+
+btw AMBIG-35: reading a file that doesn't exist is a catchable error
+tryna { readfile("/tmp/noob_golden_no_such_file.txt") } caught4k e { yap "err" }    btw OUT: err
+
+btw ---- readfile and writefile give way, so a queued task runs meanwhile
+lowkey flag1 = cap
+cook setflag1() { flag1 = nocap }
+lowkey ft1 = sendit setflag1()
+writefile(TMP, "abc")
+yap flag1, readfile(TMP)                 btw OUT: nocap abc
+lowkey flag2 = cap
+cook setflag2() { flag2 = nocap }
+lowkey ft2 = sendit setflag2()
+yap readfile(TMP), flag2                 btw OUT: abc nocap
+holdup [ft1, ft2]

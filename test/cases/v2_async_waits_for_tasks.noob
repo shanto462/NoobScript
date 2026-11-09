@@ -1,0 +1,22 @@
+btw NOERR:
+btw The main script never waits, and every task still runs after it ends, FIFO.
+cook lateprint(tag) { yap tag }
+cook napper() {
+    nap(20)
+    yap "napper done"
+}
+cook spawnsmore() {
+    yap "spawner ran"
+    sendit lateprint("spawned by a task")
+}
+sendit lateprint("a")
+sendit lateprint("b")
+sendit napper()
+sendit spawnsmore()
+yap "main done"
+btw OUT: main done
+btw OUT: a
+btw OUT: b
+btw OUT: spawner ran
+btw OUT: spawned by a task
+btw OUT: napper done

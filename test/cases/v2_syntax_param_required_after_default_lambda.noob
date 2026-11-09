@@ -1,0 +1,3 @@
+btw EXIT: 2
+yap "this must not run"
+lowkey f = cook(a = 1, b) { }

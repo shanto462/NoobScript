@@ -1,0 +1,4 @@
+btw EXIT: 2
+yap "this must not run"
+lowkey m = {"f": 1}
+lowkey t = sendit m.f

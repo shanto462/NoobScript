@@ -1,0 +1,13 @@
+btw EXIT: 1
+btw ERR: main boom
+btw An uncaught error in the main script ends everything immediately.
+cook longtask() {
+    nap(200)
+    yap "longtask must not finish"
+}
+cook unstarted() { yap "unstarted must not run" }
+sendit longtask()
+nap(20)
+yap "main"                               btw OUT: main
+sendit unstarted()
+yeet "main boom"

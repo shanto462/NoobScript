@@ -1,0 +1,7 @@
+btw EXIT: 1
+btw ERR: everyone's left on read (deadlock)
+lowkey self_t = npc
+cook waitself() { holdup self_t }
+self_t = sendit waitself()
+holdup self_t
+yap "never"

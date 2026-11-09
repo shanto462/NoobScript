@@ -1,0 +1,150 @@
+btw NOERR:
+btw Section 7 group chats. AMBIG-n comments mark readings of unclear spec text.
+btw No test depends on whether checkdms gives way on a non-empty chat, the spec is unclear there.
+
+btw ---- basics, unbounded
+lowkey c1 = groupchat()
+yap vibeof(c1), c1                       btw OUT: groupchat <groupchat>
+dm(c1, 1)
+dm(c1, "two")
+dm(c1, [3])
+yap checkdms(c1), checkdms(c1), checkdms(c1)   btw OUT: 1 two [3]
+
+btw ---- an unbounded dm never gives way
+lowkey dmlog = []
+cook noter() { slide(dmlog, "task ran") }
+lowkey ndm = sendit noter()
+lowkey c2 = groupchat()
+speedrun i in 1..5 { dm(c2, i) }
+yap dmlog                                btw OUT: []
+holdup ndm
+yap dmlog                                btw OUT: ["task ran"]
+
+btw ---- close semantics
+lowkey c3 = groupchat()
+dm(c3, "x")
+leavechat(c3)
+yap checkdms(c3), checkdms(c3), checkdms(c3)   btw OUT: x npc npc
+tryna { dm(c3, "late") } caught4k e { yap "closed err" }    btw OUT: closed err
+
+btw npc is an ordinary message, not the end
+lowkey c4 = groupchat()
+dm(c4, npc)
+dm(c4, 1)
+yap checkdms(c4), checkdms(c4)           btw OUT: npc 1
+leavechat(c4)
+yap checkdms(c4)                         btw OUT: npc
+
+btw a waiting receiver is woken by a close
+lowkey c5 = groupchat()
+cook closer() { leavechat(c5) }
+lowkey cl = sendit closer()
+yap checkdms(c5)                         btw OUT: npc
+holdup cl
+
+btw a waiting receiver is woken by a dm
+lowkey c6 = groupchat()
+cook sender() { dm(c6, "hi") }
+lowkey sn = sendit sender()
+yap checkdms(c6)                         btw OUT: hi
+holdup sn
+
+btw ---- size must be at least 1
+tryna { groupchat(0) } caught4k e { yap "err" }     btw OUT: err
+tryna { groupchat(-1) } caught4k e { yap "err" }    btw OUT: err
+
+btw ---- a bounded chat makes the sender wait
+lowkey b1 = groupchat(2)
+lowkey blog = []
+cook prod() {
+    dm(b1, "m1")
+    slide(blog, "sent1")
+    dm(b1, "m2")
+    slide(blog, "sent2")
+    dm(b1, "m3")
+    slide(blog, "sent3")
+    leavechat(b1)
+    itsgiving "done"
+}
+lowkey pt = sendit prod()
+nap(40)
+yap blog                                 btw OUT: ["sent1", "sent2"]
+yap checkdms(b1)                         btw OUT: m1
+nap(40)
+yap blog                                 btw OUT: ["sent1", "sent2", "sent3"]
+yap checkdms(b1), checkdms(b1), checkdms(b1)   btw OUT: m2 m3 npc
+yap holdup pt                            btw OUT: done
+
+btw ---- speedrun over a chat
+lowkey c7 = groupchat()
+dm(c7, 1)
+dm(c7, npc)
+dm(c7, 3)
+leavechat(c7)
+lowkey got7 = []
+speedrun m in c7 { slide(got7, m) }
+yap got7                                 btw OUT: [1, npc, 3]
+lowkey c8 = groupchat()
+leavechat(c8)
+lowkey ran8 = 0
+speedrun m in c8 { ran8 += 1 }
+yap ran8                                 btw OUT: 0
+
+btw spread and comprehensions walk a chat like speedrun does
+lowkey c9 = groupchat()
+dm(c9, 1)
+dm(c9, 2)
+leavechat(c9)
+yap [...c9]                              btw OUT: [1, 2]
+lowkey c10 = groupchat()
+dm(c10, 1)
+dm(c10, 2)
+leavechat(c10)
+yap [m * 2 speedrun m in c10]            btw OUT: [2, 4]
+
+btw ---- producer and consumer
+lowkey pc = groupchat(2)
+cook produce(n) {
+    speedrun i in 1..n { dm(pc, i) }
+    leavechat(pc)
+}
+lowkey pt2 = sendit produce(5)
+lowkey collected = []
+speedrun v in pc { slide(collected, v) }
+yap collected                            btw OUT: [1, 2, 3, 4, 5]
+holdup pt2
+
+lowkey jobs = groupchat()
+lowkey results = groupchat()
+cook worker() {
+    speedrun j in jobs { dm(results, j * 2) }
+    leavechat(results)
+}
+lowkey wtask = sendit worker()
+speedrun i in 1..3 { dm(jobs, i) }
+leavechat(jobs)
+lowkey sums = []
+speedrun r in results { slide(sums, r) }
+yap sums                                 btw OUT: [2, 4, 6]
+holdup wtask
+
+btw ---- ping-pong interleaving is fully determined by the wait points
+lowkey ping = groupchat()
+lowkey pong = groupchat()
+lowkey rally = []
+cook ponger() {
+    speedrun m in ping {
+        slide(rally, "got " + m)
+        dm(pong, m + "-pong")
+    }
+}
+lowkey pgt = sendit ponger()
+dm(ping, "a")
+slide(rally, "sent a")
+slide(rally, "recv " + checkdms(pong))
+dm(ping, "b")
+slide(rally, "sent b")
+slide(rally, "recv " + checkdms(pong))
+leavechat(ping)
+holdup pgt
+yap rally                                btw OUT: ["sent a", "got a", "recv a-pong", "sent b", "got b", "recv b-pong"]
